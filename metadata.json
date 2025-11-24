@@ -1,0 +1,5 @@
+{
+  "name": "Llanero Snake: The Chigüiro Chase",
+  "description": "A snake game variant set in the Colombian/Venezuelan Llanos. Collect Chigüiros and avoid the bombs in single or local multiplayer modes.",
+  "requestFramePermissions": []
+}
