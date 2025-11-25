@@ -7,7 +7,7 @@ import { Difficulty, Language } from "./types";
 // Y (Minor): New features or substantial enhancements.
 // Z (Deploy): Bug fixes, minor tweaks, or deployment-specific changes.
 // A (AI Gen): Incremented automatically with each AI-powered code modification.
-export const APP_VERSION = '0.3.1.16';
+export const APP_VERSION = '0.3.3.18';
 
 export const SPEEDS: Record<Difficulty, number> = {
   easy: 150,

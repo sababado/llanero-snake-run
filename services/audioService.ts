@@ -13,6 +13,10 @@ import { JOROPO_TRACKS, COUNTRY_PROGRESSION, RETRO_PROGRESSION, MusicTrack } fro
 const MEASURE_LENGTH = 6; // 6/8 time = 6 beats per measure
 
 let audioCtx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+let compressor: DynamicsCompressorNode | null = null;
+let reverbNode: ConvolverNode | null = null;
+
 let isPlaying = false;
 let nextNoteTime = 0;
 let timerID: number | null = null;
@@ -24,10 +28,61 @@ let currentStyle: MusicStyle = 'joropo';
 // State for the currently playing track
 let currentTrackConfig: MusicTrack | null = null;
 
+// Helper to create a simple algorithmic reverb impulse
+const createReverbImpulse = (ctx: AudioContext) => {
+    const duration = 1.5;
+    const decay = 2.0;
+    const rate = ctx.sampleRate;
+    const length = rate * duration;
+    const impulse = ctx.createBuffer(2, length, rate);
+    const left = impulse.getChannelData(0);
+    const right = impulse.getChannelData(1);
+
+    for (let i = 0; i < length; i++) {
+        const n = i / length;
+        // Simple noise with exponential decay
+        left[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+        right[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+    }
+    return impulse;
+};
+
 export const initAudio = () => {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // --- Master Chain Setup ---
+    
+    // 1. Dynamics Compressor (Glue)
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+
+    // 2. Master Gain (Volume Control)
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.8; 
+
+    // 3. Reverb (Atmosphere)
+    reverbNode = audioCtx.createConvolver();
+    reverbNode.buffer = createReverbImpulse(audioCtx);
+    const reverbGain = audioCtx.createGain();
+    reverbGain.gain.value = 0.25; // Wet Mix
+
+    // --- Routing ---
+    // Instruments -> MasterGain -> Compressor -> Destination
+    //                          |-> Reverb -> ReverbGain -> Compressor
+    
+    masterGain.connect(compressor);
+    masterGain.connect(reverbNode);
+    reverbNode.connect(reverbGain);
+    reverbGain.connect(compressor);
+    
+    compressor.connect(audioCtx.destination);
   }
+
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -76,19 +131,20 @@ export const setCoffeeMode = (active: boolean) => {
 export const playGameOverJingle = () => {
   stopMusic();
   if (!audioCtx) initAudio(); 
-  if (!audioCtx) return;
+  if (!audioCtx || !masterGain) return;
 
+  const dest = masterGain; // Use Master Bus
   const now = audioCtx.currentTime;
 
   if (currentStyle === 'retro') {
-      playRetroBeep(audioCtx, now, 150, 0.4, 'sawtooth');
-      playRetroBeep(audioCtx, now + 0.2, 100, 0.6, 'sawtooth');
+      playRetroBeep(audioCtx, dest, now, 150, 0.4, 'sawtooth');
+      playRetroBeep(audioCtx, dest, now + 0.2, 100, 0.6, 'sawtooth');
       return;
   }
 
   // Dissonant Strum
   const dissonantChord = [233.08, 293.66, 349.23, 415.30]; 
-  playStringInstrument(audioCtx, now, dissonantChord, 0.3, currentStyle === 'country' ? 'banjo' : 'cuatro');
+  playStringInstrument(audioCtx, dest, now, dissonantChord, 0.3, currentStyle === 'country' ? 'banjo' : 'cuatro');
 
   // Descending
   const steps = 8;
@@ -96,14 +152,14 @@ export const playGameOverJingle = () => {
   for (let i = 0; i < steps; i++) {
     const freq = startFreq * Math.pow(0.89, i); 
     const time = now + 0.1 + (i * 0.1); 
-    playPluckedString(audioCtx, time, freq, 0.5 - (i * 0.05), currentStyle === 'country' ? 'fiddle' : 'harp', false);
+    playPluckedString(audioCtx, dest, time, freq, 0.5 - (i * 0.05), currentStyle === 'country' ? 'fiddle' : 'harp', false);
   }
   
-  playBass(audioCtx, now + 0.8, 73.42, 0.8);
+  playBass(audioCtx, dest, now + 0.8, 73.42, 0.8);
 };
 
 const scheduler = () => {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterGain) return;
 
   while (nextNoteTime < audioCtx.currentTime + 0.1) {
     scheduleNote(currentNote, nextNoteTime);
@@ -128,10 +184,12 @@ const calculateStepTime = () => {
 };
 
 const scheduleNote = (beatIndex: number, time: number) => {
-  if (!audioCtx || !currentTrackConfig) return;
+  if (!audioCtx || !currentTrackConfig || !masterGain) return;
+
+  const dest = masterGain; // Route to Master Bus
 
   if (currentStyle === 'retro') {
-      scheduleRetroNote(beatIndex, time);
+      scheduleRetroNote(beatIndex, time, dest);
       return;
   }
 
@@ -160,15 +218,15 @@ const scheduleNote = (beatIndex: number, time: number) => {
   if (coffeeMode) vol = 0.4; 
 
   if (isCountry) {
-      if (isAccent) playSnare(audioCtx, time, vol);
+      if (isAccent) playSnare(audioCtx, dest, time, vol);
   } else {
-      playMaraca(audioCtx, time, isAccent ? vol * 2.5 : vol);
+      playMaraca(audioCtx, dest, time, isAccent ? vol * 2.5 : vol);
   }
 
   // --- 2. Melody (Harp or Fiddle/Banjo) ---
   if (measurePos === 0) {
-     if (useHarp) playPluckedString(audioCtx, time, rootFreq / 2, 0.6, 'harp', coffeeMode); 
-     else playPluckedString(audioCtx, time, rootFreq / 2, 0.6, 'banjo', coffeeMode); // Banjo roll bass
+     if (useHarp) playPluckedString(audioCtx, dest, time, rootFreq / 2, 0.6, 'harp', coffeeMode); 
+     else playPluckedString(audioCtx, dest, time, rootFreq / 2, 0.6, 'banjo', coffeeMode); // Banjo roll bass
   }
   
   let playChance = 0.4; 
@@ -181,37 +239,37 @@ const scheduleNote = (beatIndex: number, time: number) => {
       const noteFreq = currentChord[noteIdx] * (Math.random() > 0.5 ? 2 : 1); 
       
       if (useHarp) {
-          playPluckedString(audioCtx, time, noteFreq, 0.4, 'harp', coffeeMode);
+          playPluckedString(audioCtx, dest, time, noteFreq, 0.4, 'harp', coffeeMode);
       } else {
           // Country: Fiddle on long notes, Banjo on arps
-          if (Math.random() > 0.5) playPluckedString(audioCtx, time, noteFreq, 0.3, 'banjo', coffeeMode);
-          else playPluckedString(audioCtx, time, noteFreq, 0.3, 'fiddle', coffeeMode);
+          if (Math.random() > 0.5) playPluckedString(audioCtx, dest, time, noteFreq, 0.3, 'banjo', coffeeMode);
+          else playPluckedString(audioCtx, dest, time, noteFreq, 0.3, 'fiddle', coffeeMode);
       }
   }
 
   // --- 3. Harmony (Cuatro or Banjo Strum) ---
   if (hasHarmony) {
       if (isAccent) {
-          playStringInstrument(audioCtx, time, currentChord, 0.2, useBanjo ? 'banjo' : 'cuatro');
+          playStringInstrument(audioCtx, dest, time, currentChord, 0.2, useBanjo ? 'banjo' : 'cuatro');
       }
       if (isFrenzy && (measurePos === 1 || measurePos === 4)) {
-          playStringInstrument(audioCtx, time, currentChord, 0.08, useBanjo ? 'banjo' : 'cuatro');
+          playStringInstrument(audioCtx, dest, time, currentChord, 0.08, useBanjo ? 'banjo' : 'cuatro');
       }
   }
 
   // --- 4. Bass ---
   if (hasBass) {
       if (measurePos === 0) {
-          playBass(audioCtx, time, rootFreq / 4, 0.6); 
+          playBass(audioCtx, dest, time, rootFreq / 4, 0.6); 
       }
       if (measurePos === 3) {
            const fifth = currentChord[2] || (rootFreq * 1.5);
-           playBass(audioCtx, time, fifth / 4, 0.5);
+           playBass(audioCtx, dest, time, fifth / 4, 0.5);
       }
   }
 };
 
-const scheduleRetroNote = (beatIndex: number, time: number) => {
+const scheduleRetroNote = (beatIndex: number, time: number, dest: AudioNode) => {
     if (!audioCtx || !currentTrackConfig) return;
     
     // Simple Arpeggio
@@ -222,11 +280,11 @@ const scheduleRetroNote = (beatIndex: number, time: number) => {
     
     // Play root on beat 0
     if (measurePos === 0) {
-        playRetroBeep(audioCtx, time, currentChord[0], 0.1, 'square');
+        playRetroBeep(audioCtx, dest, time, currentChord[0], 0.1, 'square');
     }
     // Arpeggiate
     if (measurePos % 2 === 0) {
          const idx = (measurePos / 2) % 4;
-         playRetroBeep(audioCtx, time, currentChord[idx] * 2, 0.05, 'square');
+         playRetroBeep(audioCtx, dest, time, currentChord[idx] * 2, 0.05, 'square');
     }
 };
