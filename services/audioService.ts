@@ -1,11 +1,15 @@
 
-// Procedural Joropo Generator using Web Audio API
+import { MusicStyle } from "../types";
+import { 
+    playPluckedString, 
+    playStringInstrument, 
+    playBass, 
+    playMaraca, 
+    playSnare, 
+    playRetroBeep 
+} from './instrumentService';
+import { JOROPO_TRACKS, COUNTRY_PROGRESSION, RETRO_PROGRESSION, MusicTrack } from './musicData';
 
-// Frequency table for D Major (I) and A7 (V)
-const CHORD_I = [293.66, 369.99, 440.00, 587.33]; // D, F#, A, D
-const CHORD_V = [220.00, 277.18, 329.63, 392.00]; // A, C#, E, G
-
-const PROGRESSION = [CHORD_I, CHORD_V, CHORD_V, CHORD_I];
 const MEASURE_LENGTH = 6; // 6/8 time = 6 beats per measure
 
 let audioCtx: AudioContext | null = null;
@@ -14,7 +18,11 @@ let nextNoteTime = 0;
 let timerID: number | null = null;
 let currentNote = 0;
 let scoreIntensity = 0;
-let coffeeMode = false; // "Frenzy" mode for coffee powerup
+let coffeeMode = false; 
+let currentStyle: MusicStyle = 'joropo';
+
+// State for the currently playing track
+let currentTrackConfig: MusicTrack | null = null;
 
 export const initAudio = () => {
   if (!audioCtx) {
@@ -25,10 +33,22 @@ export const initAudio = () => {
   }
 };
 
-export const startMusic = () => {
+export const startMusic = (style: MusicStyle = 'joropo') => {
   initAudio();
+  currentStyle = style;
   if (isPlaying) return;
   
+  // Pick a random track if style is Joropo
+  if (style === 'joropo') {
+      const randomIdx = Math.floor(Math.random() * JOROPO_TRACKS.length);
+      currentTrackConfig = JOROPO_TRACKS[randomIdx];
+      console.log(`Starting Track: ${currentTrackConfig.name}`);
+  } else if (style === 'country' || style === 'mix') {
+      currentTrackConfig = { name: "Country", progression: COUNTRY_PROGRESSION };
+  } else {
+      currentTrackConfig = { name: "Retro", progression: RETRO_PROGRESSION };
+  }
+
   isPlaying = true;
   nextNoteTime = audioCtx!.currentTime + 0.1;
   currentNote = 0;
@@ -55,29 +75,31 @@ export const setCoffeeMode = (active: boolean) => {
 
 export const playGameOverJingle = () => {
   stopMusic();
-  // Ensure context is ready
   if (!audioCtx) initAudio(); 
   if (!audioCtx) return;
 
   const now = audioCtx.currentTime;
 
-  // 1. Dissonant Strum (Cuatro) - Like hitting the wrong strings
-  // A diminished chord maybe?
-  const dissonantChord = [233.08, 293.66, 349.23, 415.30]; // Bb, D, F, Ab (Bb7) - clashes with D major
-  playCuatroStrum(now, dissonantChord, 0.3);
+  if (currentStyle === 'retro') {
+      playRetroBeep(audioCtx, now, 150, 0.4, 'sawtooth');
+      playRetroBeep(audioCtx, now + 0.2, 100, 0.6, 'sawtooth');
+      return;
+  }
 
-  // 2. Descending Harp (The "falling" sound)
+  // Dissonant Strum
+  const dissonantChord = [233.08, 293.66, 349.23, 415.30]; 
+  playStringInstrument(audioCtx, now, dissonantChord, 0.3, currentStyle === 'country' ? 'banjo' : 'cuatro');
+
+  // Descending
   const steps = 8;
-  const startFreq = 587.33; // D5
+  const startFreq = 587.33; 
   for (let i = 0; i < steps; i++) {
-    // Whole tone scale down
     const freq = startFreq * Math.pow(0.89, i); 
-    const time = now + 0.1 + (i * 0.1); // Slightly slower
-    playHarpString(time, freq, 0.5 - (i * 0.05)); // Fading out
+    const time = now + 0.1 + (i * 0.1); 
+    playPluckedString(audioCtx, time, freq, 0.5 - (i * 0.05), currentStyle === 'country' ? 'fiddle' : 'harp', false);
   }
   
-  // 3. Low Thud (Bass)
-  playBass(now + 0.8, 73.42, 0.8); // D2
+  playBass(audioCtx, now + 0.8, 73.42, 0.8);
 };
 
 const scheduler = () => {
@@ -87,7 +109,7 @@ const scheduler = () => {
     scheduleNote(currentNote, nextNoteTime);
     nextNoteTime += calculateStepTime();
     currentNote++;
-    // Reset measure after 4 measures of 6 beats (24 beats total loop)
+    // Reset based on 4 measures (standard loop size for defined tracks)
     if (currentNote >= MEASURE_LENGTH * 4) currentNote = 0; 
   }
 
@@ -97,13 +119,8 @@ const scheduler = () => {
 };
 
 const calculateStepTime = () => {
-  if (coffeeMode) return 0.11; // Extremely fast for Coffee Mode!
+  if (coffeeMode) return 0.11; 
 
-  // Dynamic Tempo:
-  // Starts at ~240ms per 8th note (slower).
-  // Max speed at ~150ms per 8th note (fast Joropo).
-  // Intensity 0 -> 240ms
-  // Intensity 150 -> 150ms
   const startTempo = 0.24;
   const maxTempo = 0.15;
   const factor = Math.min(scoreIntensity / 150, 1);
@@ -111,190 +128,105 @@ const calculateStepTime = () => {
 };
 
 const scheduleNote = (beatIndex: number, time: number) => {
-  if (!audioCtx) return;
+  if (!audioCtx || !currentTrackConfig) return;
 
-  const measurePos = beatIndex % MEASURE_LENGTH; // 0..5
-  const chordIdx = Math.floor(beatIndex / MEASURE_LENGTH) % 4;
-  const currentChord = PROGRESSION[chordIdx];
+  if (currentStyle === 'retro') {
+      scheduleRetroNote(beatIndex, time);
+      return;
+  }
+
+  const measurePos = beatIndex % MEASURE_LENGTH; 
+  const progression = currentTrackConfig.progression;
+  const chordIdx = Math.floor(beatIndex / MEASURE_LENGTH) % progression.length;
+  const currentChord = progression[chordIdx];
   const rootFreq = currentChord[0];
 
-  // Intensity Tiers (Stretched out for slower progression)
-  const hasCuatro = scoreIntensity >= 30 || coffeeMode;
+  const hasHarmony = scoreIntensity >= 30 || coffeeMode;
   const hasBass = scoreIntensity >= 70 || coffeeMode;
   const isFrenzy = scoreIntensity >= 150 || coffeeMode;
 
-  // --- 1. Maracas (Rhythm) ---
-  // Constant driving rhythm. Accent on 3 and 6 (typical Joropo).
-  // 1 2 3(ACCENT) 4 5 6(ACCENT)
-  const isAccent = (measurePos === 2 || measurePos === 5);
-  let maracaVol = 0.15;
-  if (isFrenzy) maracaVol = 0.3; // Louder when intense
-  if (coffeeMode) maracaVol = 0.4; // Even louder for coffee
+  const isCountry = currentStyle === 'country';
+  const isMix = currentStyle === 'mix';
+  
+  // Decide Instruments
+  // Mix: Alternates measures or layers instruments
+  const useBanjo = isCountry || (isMix && chordIdx % 2 === 0);
+  const useHarp = !useBanjo;
 
-  if (isAccent) {
-      playMaraca(time, maracaVol * 2.5);
+  // --- 1. Rhythm (Maracas or Snare) ---
+  const isAccent = (measurePos === 2 || measurePos === 5);
+  let vol = 0.15;
+  if (isFrenzy) vol = 0.3; 
+  if (coffeeMode) vol = 0.4; 
+
+  if (isCountry) {
+      if (isAccent) playSnare(audioCtx, time, vol);
   } else {
-      playMaraca(time, maracaVol);
+      playMaraca(audioCtx, time, isAccent ? vol * 2.5 : vol);
   }
 
-  // --- 2. Arpa (Melody/Lead) ---
-  // Bass string (Bordon) always on 1
+  // --- 2. Melody (Harp or Fiddle/Banjo) ---
   if (measurePos === 0) {
-      playHarpString(time, rootFreq / 2, 0.6); // Octave down
+     if (useHarp) playPluckedString(audioCtx, time, rootFreq / 2, 0.6, 'harp', coffeeMode); 
+     else playPluckedString(audioCtx, time, rootFreq / 2, 0.6, 'banjo', coffeeMode); // Banjo roll bass
   }
   
-  // Melodic improvisation
-  // Density increases with score
-  let playChance = 0.4; // Base chance
-  if (hasCuatro) playChance = 0.6;
+  let playChance = 0.4; 
+  if (hasHarmony) playChance = 0.6;
   if (isFrenzy) playChance = 0.9;
-  if (coffeeMode) playChance = 1.0; // Play every possible note!
+  if (coffeeMode) playChance = 1.0; 
 
-  // Always play on accents for groove
   if (isAccent || Math.random() < playChance) {
-      // Pick a random note from the chord, preferably higher
       const noteIdx = Math.floor(Math.random() * currentChord.length);
-      const noteFreq = currentChord[noteIdx] * (Math.random() > 0.5 ? 2 : 1); // Random octave
-      // Slightly randomize timing for human feel? No, keep tight for game.
-      playHarpString(time, noteFreq, 0.4);
+      const noteFreq = currentChord[noteIdx] * (Math.random() > 0.5 ? 2 : 1); 
       
-      // In coffee mode, maybe add a harmony note occasionally
-      if (coffeeMode && Math.random() > 0.5) {
-          playHarpString(time, noteFreq * 1.5, 0.3); // 5th above
+      if (useHarp) {
+          playPluckedString(audioCtx, time, noteFreq, 0.4, 'harp', coffeeMode);
+      } else {
+          // Country: Fiddle on long notes, Banjo on arps
+          if (Math.random() > 0.5) playPluckedString(audioCtx, time, noteFreq, 0.3, 'banjo', coffeeMode);
+          else playPluckedString(audioCtx, time, noteFreq, 0.3, 'fiddle', coffeeMode);
       }
   }
 
-  // --- 3. Cuatro (Harmony/Strum) ---
-  // Adds body. Strums on accents.
-  if (hasCuatro) {
+  // --- 3. Harmony (Cuatro or Banjo Strum) ---
+  if (hasHarmony) {
       if (isAccent) {
-          playCuatroStrum(time, currentChord, 0.2);
+          playStringInstrument(audioCtx, time, currentChord, 0.2, useBanjo ? 'banjo' : 'cuatro');
       }
-      // "Repique" (Ghost notes) in Frenzy mode
       if (isFrenzy && (measurePos === 1 || measurePos === 4)) {
-          playCuatroStrum(time, currentChord, 0.08);
+          playStringInstrument(audioCtx, time, currentChord, 0.08, useBanjo ? 'banjo' : 'cuatro');
       }
   }
 
-  // --- 4. Bajo (Bass) ---
-  // Adds depth at high scores.
-  // Plays on 1 and 4 (Dotted quarter pulse)
+  // --- 4. Bass ---
   if (hasBass) {
       if (measurePos === 0) {
-          playBass(time, rootFreq / 4, 0.6); // 2 Octaves down
+          playBass(audioCtx, time, rootFreq / 4, 0.6); 
       }
       if (measurePos === 3) {
-           // Play the 5th of the chord
            const fifth = currentChord[2] || (rootFreq * 1.5);
-           playBass(time, fifth / 4, 0.5);
+           playBass(audioCtx, time, fifth / 4, 0.5);
       }
   }
 };
 
-// --- SYNTHESIZERS ---
-
-const playHarpString = (time: number, freq: number, vol: number) => {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  
-  // Use sawtooth for coffee mode to make it sound "electric" or "wired"
-  osc.type = coffeeMode ? 'sawtooth' : 'triangle'; 
-  osc.frequency.value = freq;
-  
-  // Pluck Envelope
-  gain.gain.setValueAtTime(0, time);
-  gain.gain.linearRampToValueAtTime(vol, time + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.6); 
-  
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  osc.start(time);
-  osc.stop(time + 0.6);
-};
-
-const playCuatroStrum = (time: number, chord: number[], vol: number) => {
-  if (!audioCtx) return;
-  
-  const strumSpeed = 0.015; // Fast strum
-  chord.forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      
-      // Cuatro has a unique re-entrant tuning, giving it a high-pitched cluster sound.
-      // We simulate this by mixing saw and triangle.
-      osc.type = 'sawtooth';
-      osc.frequency.value = freq;
-
-      const noteTime = time + (i * strumSpeed);
-      
-      gain.gain.setValueAtTime(0, noteTime);
-      gain.gain.linearRampToValueAtTime(vol, noteTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.15); // Short decay
-
-      // Lowpass filter to cut harshness
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 3000;
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(audioCtx.destination);
-      
-      osc.start(noteTime);
-      osc.stop(noteTime + 0.2);
-  });
-};
-
-const playBass = (time: number, freq: number, vol: number) => {
-    if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = 'square'; // Square wave for punchy bass, filtered down
-    osc.frequency.value = freq;
-
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 400; // Deep sound
-
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(vol, time + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
-
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start(time);
-    osc.stop(time + 0.5);
-};
-
-const playMaraca = (time: number, amp: number) => {
-  if (!audioCtx) return;
-  const bufferSize = audioCtx.sampleRate * 0.05;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'highpass'; // Maracas are high pitched
-  filter.frequency.value = 3000;
-  
-  const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0, time);
-  gain.gain.linearRampToValueAtTime(amp, time + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
-
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  noise.start(time);
+const scheduleRetroNote = (beatIndex: number, time: number) => {
+    if (!audioCtx || !currentTrackConfig) return;
+    
+    // Simple Arpeggio
+    const measurePos = beatIndex % MEASURE_LENGTH; 
+    const progression = currentTrackConfig.progression;
+    const chordIdx = Math.floor(beatIndex / MEASURE_LENGTH) % progression.length;
+    const currentChord = progression[chordIdx];
+    
+    // Play root on beat 0
+    if (measurePos === 0) {
+        playRetroBeep(audioCtx, time, currentChord[0], 0.1, 'square');
+    }
+    // Arpeggiate
+    if (measurePos % 2 === 0) {
+         const idx = (measurePos / 2) % 4;
+         playRetroBeep(audioCtx, time, currentChord[idx] * 2, 0.05, 'square');
+    }
 };

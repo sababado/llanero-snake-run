@@ -2,10 +2,11 @@
 import React from 'react';
 import { GameSettings, Language, Difficulty } from '../types';
 import { TRANSLATIONS, APP_VERSION } from '../constants';
-import { Settings, Repeat, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Sparkles, BarChart3 } from 'lucide-react';
+import { Settings, Repeat, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Sparkles, BarChart3, Globe } from 'lucide-react';
 
 interface MainMenuProps {
     startGame: (mode: 1 | 2) => void;
+    startMultiplayerSetup: () => void;
     settings: GameSettings;
     updateSetting: (key: keyof GameSettings, value: any) => void;
     setShowStats: (show: boolean) => void;
@@ -14,7 +15,8 @@ interface MainMenuProps {
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ 
-    startGame, 
+    startGame,
+    startMultiplayerSetup,
     settings, 
     updateSetting, 
     setShowStats, 
@@ -34,7 +36,7 @@ const MainMenu: React.FC<MainMenuProps> = ({
                  </div>
             )}
 
-            <div className="flex gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <button 
                     onClick={() => startGame(1)}
                     className="bg-orange-600 hover:bg-orange-700 text-white font-rye py-4 px-6 rounded border-2 border-orange-800 transform hover:scale-105 transition-all"
@@ -42,13 +44,24 @@ const MainMenu: React.FC<MainMenuProps> = ({
                     <span dangerouslySetInnerHTML={{__html: t.btn1p}} />
                     <div className="text-xs font-sans opacity-80 mt-1">{t.btn1pSub}</div>
                 </button>
-                <div className="hidden sm:block">
+                <div className="flex gap-4">
                     <button 
                         onClick={() => startGame(2)}
                         className="bg-orange-600 hover:bg-orange-700 text-white font-rye py-4 px-6 rounded border-2 border-orange-800 transform hover:scale-105 transition-all"
                     >
                         <span dangerouslySetInnerHTML={{__html: t.btn2p}} />
                         <div className="text-xs font-sans opacity-80 mt-1">{t.btn2pSub}</div>
+                    </button>
+                    
+                     <button 
+                        onClick={startMultiplayerSetup}
+                        className="bg-cyan-600 hover:bg-cyan-700 text-white font-rye py-4 px-6 rounded border-2 border-cyan-800 transform hover:scale-105 transition-all"
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                             <Globe size={18} />
+                             <span>{t.btnOnline}</span>
+                        </div>
+                        <div className="text-xs font-sans opacity-80 mt-1">{t.btnOnlineSub}</div>
                     </button>
                 </div>
             </div>

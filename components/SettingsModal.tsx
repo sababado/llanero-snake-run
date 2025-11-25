@@ -1,8 +1,10 @@
 
+
+
 import React from 'react';
-import { GameSettings, Language, Difficulty } from '../types';
+import { GameSettings, Language, Difficulty, MusicStyle } from '../types';
 import { TRANSLATIONS, APP_VERSION } from '../constants';
-import { Music, Mic } from 'lucide-react';
+import { Music, Mic, Smartphone, MessageSquare } from 'lucide-react';
 
 interface SettingsModalProps {
     settings: GameSettings;
@@ -17,7 +19,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, updateSetting, 
         <div className="absolute inset-0 bg-black/95 z-40 flex flex-col items-center justify-center p-6">
             <h2 className="font-rye text-[#f1c40f] text-3xl mb-6">{t.settingsTitle}</h2>
 
-            <div className="flex flex-col gap-4 w-full max-w-xs">
+            <div className="flex flex-col gap-4 w-full max-w-xs h-[80vh] overflow-y-auto pb-10">
                 <div className="flex flex-col gap-1">
                     <label className="text-sm text-gray-300">{t.langLabel}</label>
                     <select 
@@ -30,17 +32,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, updateSetting, 
                     </select>
                 </div>
 
-                <div className="flex items-center gap-3 bg-gray-800/50 p-3 rounded">
+                {/* Music Settings */}
+                <div className="flex flex-col gap-2 bg-gray-800/50 p-3 rounded">
+                    <div className="flex items-center gap-2">
                         <input 
-                        type="checkbox" 
-                        id="music"
-                        checked={settings.musicEnabled}
-                        onChange={(e) => updateSetting('musicEnabled', e.target.checked)}
-                        className="w-5 h-5 accent-orange-500"
-                    />
-                    <label htmlFor="music" className="cursor-pointer select-none flex items-center gap-2">
-                        <Music size={16} /> {t.musicLabel}
-                    </label>
+                            type="checkbox" 
+                            id="music"
+                            checked={settings.musicEnabled}
+                            onChange={(e) => updateSetting('musicEnabled', e.target.checked)}
+                            className="w-5 h-5 accent-orange-500"
+                        />
+                        <label htmlFor="music" className="cursor-pointer select-none flex items-center gap-2 font-bold">
+                            <Music size={16} /> {t.musicLabel}
+                        </label>
+                    </div>
+                    {settings.musicEnabled && (
+                        <select 
+                            value={settings.musicStyle}
+                            onChange={(e) => updateSetting('musicStyle', e.target.value as MusicStyle)}
+                            className="bg-gray-700 border border-gray-500 rounded p-1 text-sm text-white mt-1"
+                        >
+                            <option value="joropo">{t.musicJoropo}</option>
+                            <option value="country">{t.musicCountry}</option>
+                            <option value="mix">{t.musicMix}</option>
+                            <option value="retro">{t.musicRetro}</option>
+                        </select>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-3 bg-gray-800/50 p-3 rounded">
@@ -53,6 +70,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, updateSetting, 
                     />
                     <label htmlFor="narratorAudio" className="cursor-pointer select-none flex items-center gap-2">
                         <Mic size={16} /> {t.narratorAudioLabel}
+                    </label>
+                </div>
+
+                <div className="flex items-center gap-3 bg-gray-800/50 p-3 rounded">
+                    <input 
+                        type="checkbox" 
+                        id="narratorText"
+                        checked={settings.narratorTextEnabled}
+                        onChange={(e) => updateSetting('narratorTextEnabled', e.target.checked)}
+                        className="w-5 h-5 accent-orange-500"
+                    />
+                    <label htmlFor="narratorText" className="cursor-pointer select-none flex items-center gap-2">
+                        <MessageSquare size={16} /> {t.narratorTextLabel}
+                    </label>
+                </div>
+
+                <div className="flex items-center gap-3 bg-gray-800/50 p-3 rounded border border-green-800">
+                        <input 
+                        type="checkbox" 
+                        id="retro"
+                        checked={settings.retroMode}
+                        onChange={(e) => updateSetting('retroMode', e.target.checked)}
+                        className="w-5 h-5 accent-green-500"
+                    />
+                    <label htmlFor="retro" className="cursor-pointer select-none flex items-center gap-2 text-green-300">
+                        <Smartphone size={16} /> {t.retroLabel}
                     </label>
                 </div>
 

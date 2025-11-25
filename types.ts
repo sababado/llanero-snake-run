@@ -1,4 +1,5 @@
 
+
 export enum Direction {
   UP = 'UP',
   DOWN = 'DOWN',
@@ -60,6 +61,9 @@ export interface BolaDeFuego {
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type Language = 'es' | 'en';
+export type MusicStyle = 'joropo' | 'country' | 'mix' | 'retro';
+export type WeatherState = 'sunny' | 'sunset' | 'night' | 'rain';
+export type AppView = 'MENU' | 'LOBBY' | 'GAME' | 'GAME_OVER';
 
 export interface GameSettings {
   difficulty: Difficulty;
@@ -68,7 +72,10 @@ export interface GameSettings {
   language: Language;
   controlsSwapped: boolean;
   musicEnabled: boolean;
+  musicStyle: MusicStyle;
   narratorAudioEnabled: boolean;
+  narratorTextEnabled: boolean;
+  retroMode: boolean; // Nokia style
 }
 
 export interface GameState {
@@ -89,6 +96,15 @@ export interface GameState {
   narratorText: string;
   chiguirosEaten: number; 
   lastMilestone: number;
+  sessionEatenItems: string[]; // Track items for Gastronomy Gallery
+  weather: WeatherState;
+  rainIntensity: number; // 0 to 1
+}
+
+export interface LeaderboardEntry {
+  name: string;
+  score: number;
+  date: string;
 }
 
 export interface GameStats {
@@ -96,4 +112,51 @@ export interface GameStats {
   totalGames: number;
   totalChiguiros: number;
   totalScore: number;
+  leaderboard: LeaderboardEntry[];
+}
+
+// Multiplayer Types
+export type MultiplayerRole = 'host' | 'client' | 'none';
+
+export interface MultiplayerState {
+  active: boolean;
+  role: MultiplayerRole;
+  roomId: string | null;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  errorMsg?: string;
+}
+
+export interface NetworkPacket {
+  type: 'INIT' | 'UPDATE' | 'INPUT' | 'GAME_OVER' | 'COUNTDOWN' | 'READY' | 'PING' | 'REMATCH' | 'START_GAME';
+  payload: any;
+}
+
+export interface InitPacket {
+  settings: GameSettings;
+  backgroundUrl: string | null;
+  virgenUrl: string | null;
+}
+
+export interface ReadyPacket {
+  role: 'host' | 'client';
+}
+
+export interface UpdatePacket {
+  snake1: Snake;
+  snake2: Snake;
+  chiguiro: Item;
+  aguacate: Item;
+  virgen: Item;
+  cafe: Item;
+  bomb: Item;
+  bola: BolaDeFuego;
+  weather: WeatherState;
+  rainIntensity: number;
+  winnerMsg: string;
+  isRunning: boolean;
+  gameMode: 1 | 2;
+}
+
+export interface InputPacket {
+  dir: Direction;
 }

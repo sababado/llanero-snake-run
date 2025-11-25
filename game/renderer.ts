@@ -1,27 +1,36 @@
-
-import { GameState, Snake } from '../types';
-import { TILE_SIZE, MAX_IMMUNITY } from '../constants';
+import { GameState } from '../types';
+import { TILE_SIZE, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
+import { drawRetroGame } from './retroRenderer';
+import { drawSnake, drawHUD } from './renderUtils';
 
 export const drawGame = (
     ctx: CanvasRenderingContext2D,
     state: GameState,
     assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null },
     time: number,
-    canvasWidth: number,
-    canvasHeight: number
+    isRetroMode: boolean
 ) => {
-    // Background
-    if (assets.bgImage) {
-        ctx.drawImage(assets.bgImage, 0, 0, canvasWidth, canvasHeight);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    } else {
-        const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight);
-        grad.addColorStop(0, "#4CA1AF");
-        grad.addColorStop(1, "#C4E0E5");
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    const width = LOGICAL_WIDTH;
+    const height = LOGICAL_HEIGHT;
+    
+    if (isRetroMode) {
+        drawRetroGame(ctx, state, width, height, time);
+        return;
     }
+
+    drawModernGame(ctx, state, assets, width, height, time);
+};
+
+const drawModernGame = (
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+    assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null },
+    width: number,
+    height: number,
+    time: number
+) => {
+    // Background & Weather
+    drawBackground(ctx, state, assets.bgImage, width, height);
 
     // Clouds
     ctx.fillStyle = "rgba(255,255,255,0.6)";
@@ -33,18 +42,13 @@ export const drawGame = (
         ctx.fill();
     });
 
-    // Floor (optional tint if no image)
-    if(!assets.bgImage) {
-      ctx.fillStyle = "#66BB6A";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    }
-
     // Draw Items
     drawChiguiro(ctx, state.chiguiro.x, state.chiguiro.y, state.chiguiro.name);
     if (state.aguacate.active) drawAguacate(ctx, state.aguacate.x, state.aguacate.y);
     if (state.virgen.active) drawVirgen(ctx, state.virgen.x, state.virgen.y, assets.virgenImage, time);
     if (state.cafe.active) drawCafe(ctx, state.cafe.x, state.cafe.y, time);
     if (state.bola.active) drawBolaDeFuego(ctx, state.bola.x, state.bola.y);
+    if (state.bomb.active) drawBomb(ctx, state.bomb.x, state.bomb.y);
 
     // Draw Particles
     state.particles.forEach(p => {
@@ -57,64 +61,69 @@ export const drawGame = (
     ctx.globalAlpha = 1;
 
     // Draw Snakes with breathing animation
-    drawSnake(ctx, state.snake1, time);
-    if (state.gameMode === 2) drawSnake(ctx, state.snake2, time);
+    drawSnake(ctx, state.snake1, time, false);
+    if (state.gameMode === 2) drawSnake(ctx, state.snake2, time, false);
 
-    // Draw HUD (Powerup Indicators)
-    drawHUD(ctx, state, canvasWidth, canvasHeight);
-};
-
-const drawHUD = (ctx: CanvasRenderingContext2D, state: GameState, width: number, height: number) => {
-    // P1 Indicator (Left)
-    if (state.snake1.immunityTimer > 0) {
-        drawPowerUpBar(ctx, 30, 60, state.snake1.immunityTimer, "P1 Energía");
+    // Rain Overlay
+    if (state.rainIntensity > 0) {
+        drawRain(ctx, width, height, time, state.rainIntensity);
     }
 
-    // P2 Indicator (Right) - Only if active
-    if (state.gameMode === 2 && state.snake2.immunityTimer > 0) {
-        drawPowerUpBar(ctx, width - 130, 60, state.snake2.immunityTimer, "P2 Energía");
+    // Draw HUD (Powerup Indicators)
+    drawHUD(ctx, state, width, height, false);
+};
+
+const drawBackground = (
+    ctx: CanvasRenderingContext2D, 
+    state: GameState, 
+    bgImage: HTMLImageElement | null, 
+    w: number, 
+    h: number
+) => {
+    // Base Background
+    if (bgImage) {
+        ctx.drawImage(bgImage, 0, 0, w, h);
+    } else {
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, "#4CA1AF");
+        grad.addColorStop(1, "#C4E0E5");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    // Weather Overlays
+    if (state.weather === 'sunset') {
+        ctx.fillStyle = "rgba(255, 87, 34, 0.3)"; // Orange tint
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+    } else if (state.weather === 'night') {
+        ctx.fillStyle = "rgba(10, 10, 50, 0.6)"; // Dark Blue
+        ctx.fillRect(0, 0, w, h);
+        
+        // Fireflies
+        if (Math.random() > 0.5) {
+            ctx.fillStyle = "#C6FF00";
+            for(let i=0; i<3; i++) {
+                ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+            }
+        }
     }
 }
 
-const drawPowerUpBar = (ctx: CanvasRenderingContext2D, x: number, y: number, value: number, label: string) => {
-    const maxWidth = 100;
-    const currentWidth = (value / MAX_IMMUNITY) * maxWidth;
-    
-    // Label
-    ctx.fillStyle = "white";
-    ctx.font = "bold 12px Roboto";
-    ctx.textAlign = "left";
-    ctx.shadowColor = "black";
-    ctx.shadowBlur = 4;
-    ctx.fillText(label, x, y - 5);
-    ctx.shadowBlur = 0;
-
-    // Background Bar
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(x, y, maxWidth, 10);
-
-    // Fill Bar
-    ctx.fillStyle = "#FFD700"; // Gold color for energy
-    // Flash effect when low
-    if (value < 50 && Math.floor(value / 5) % 2 === 0) {
-        ctx.fillStyle = "#FFF";
-    }
-    ctx.fillRect(x, y, Math.max(0, currentWidth), 10);
-    
-    // Border
-    ctx.strokeStyle = "white";
+const drawRain = (ctx: CanvasRenderingContext2D, w: number, h: number, time: number, intensity: number) => {
+    ctx.strokeStyle = `rgba(179, 229, 252, ${0.4 + intensity * 0.2})`;
     ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, maxWidth, 10);
-    
-    // Icon (Coffee Cup)
-    ctx.fillStyle = "#3E2723";
     ctx.beginPath();
-    ctx.arc(x - 12, y + 5, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.font = "12px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("☕", x - 12, y + 9);
+    const dropCount = 50 + (intensity * 100);
+    for (let i=0; i < dropCount; i++) {
+        // Pseudo-random rain drops based on time so they "fall"
+        const x = (Math.sin(i * 123.45) * w + w + time * 0.5) % w;
+        const y = (Math.cos(i * 67.89) * h + h + time * 1.5) % h;
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 2, y + 10);
+    }
+    ctx.stroke();
 }
 
 const drawChiguiro = (ctx: CanvasRenderingContext2D, x: number, y: number, name?: string) => {
@@ -269,6 +278,13 @@ const drawVirgen = (ctx: CanvasRenderingContext2D, x: number, y: number, virgenI
     }
 };
 
+const drawBomb = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+    const px = x * TILE_SIZE;
+    const py = y * TILE_SIZE;
+    ctx.beginPath(); ctx.arc(px+10, py+10, 8, 0, Math.PI*2); ctx.stroke();
+    ctx.fillText("X", px+6, py+14);
+}
+
 const drawBolaDeFuego = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
     const px = x * TILE_SIZE;
     const py = y * TILE_SIZE;
@@ -287,55 +303,4 @@ const drawBolaDeFuego = (ctx: CanvasRenderingContext2D, x: number, y: number) =>
     ctx.beginPath();
     ctx.arc(px + 10, py + 10, 4, 0, Math.PI * 2);
     ctx.fill();
-};
-
-const drawSnake = (ctx: CanvasRenderingContext2D, snake: Snake, time: number) => {
-    // Breathing effect: Slight expansion and contraction
-    const breath = Math.sin(time / 200) * 1.5; 
-    
-    snake.body.forEach((part, index) => {
-        const px = part.x * TILE_SIZE;
-        const py = part.y * TILE_SIZE;
-        
-        // Immunity Visual: Glow
-        if (snake.immunityTimer > 0) {
-            ctx.shadowColor = "white";
-            ctx.shadowBlur = 10;
-        } else {
-            ctx.shadowBlur = 0;
-        }
-
-        if (snake.colorType === 'colombia') {
-            let pattern = index % 4;
-            if (pattern <= 1) ctx.fillStyle = "#FFD700"; 
-            else if (pattern === 2) ctx.fillStyle = "#0033A0"; 
-            else ctx.fillStyle = "#CE1126"; 
-        } else {
-            let pattern = index % 3;
-            if (pattern === 0) ctx.fillStyle = "#DA70D6"; 
-            else if (pattern === 1) ctx.fillStyle = "#9932CC"; 
-            else ctx.fillStyle = "#E6E6FA"; 
-        }
-
-        // Apply breathing scale offset
-        const offset = index === 0 ? 0 : -breath/2; // Head doesn't breathe as much
-        const size = index === 0 ? TILE_SIZE : TILE_SIZE + breath;
-
-        ctx.fillRect(px + offset, py + offset, size, size);
-        ctx.strokeStyle = "rgba(0,0,0,0.2)";
-        ctx.strokeRect(px + offset, py + offset, size, size);
-
-        if (index === 0) {
-            // Head detail
-            ctx.fillStyle = "#D7CCC8"; 
-            ctx.beginPath();
-            ctx.ellipse(px + 10, py + 10, 8, 8, 0, 0, Math.PI * 2); 
-            ctx.fill();
-            ctx.fillStyle = "#3E2723"; 
-            ctx.beginPath();
-            ctx.arc(px + 10, py + 10, 4, 0, Math.PI * 2); 
-            ctx.fill();
-        }
-    });
-    ctx.shadowBlur = 0; // Reset
 };

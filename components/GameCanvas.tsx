@@ -1,12 +1,15 @@
 
-import React, { useRef, useEffect, useCallback } from 'react';
-import { GameSettings, Snake, Cloud, Direction, GameState } from '../types';
-import { SPEEDS, TILE_SIZE, YOPAL_FOODS } from '../constants';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { GameSettings, Snake, Cloud, Direction, GameState, MultiplayerState, NetworkPacket, InputPacket, InitPacket, UpdatePacket } from '../types';
+import { SPEEDS, TILE_SIZE, YOPAL_FOODS, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
 import VirtualJoystick from './VirtualJoystick';
 import { generateNarratorCommentary } from '../services/aiService';
 import { setMusicIntensity, setCoffeeMode } from '../services/audioService';
 import { drawGame } from '../game/renderer';
-import { updateGame } from '../game/logic';
+import { updateGame, getRandomSafePosition, isOccupied } from '../game/logic';
+import { multiplayerService } from '../services/multiplayerService';
+import { useGameInput } from '../hooks/useGameInput';
+import { useMultiplayerSync } from '../hooks/useMultiplayerSync';
 
 interface GameCanvasProps {
   settings: GameSettings;
@@ -17,6 +20,10 @@ interface GameCanvasProps {
   onGameOver: (score1: number, score2: number, msg: string, context: { score: number, cause: string }, chiguirosEaten: number, winner: 'p1' | 'p2' | 'tie' | null) => void;
   onScoreUpdate: (score1: number, score2: number) => void;
   onShowCommentary: (msg: string) => void;
+  onSessionItemsUpdate: (items: string[]) => void;
+  mpState: MultiplayerState;
+  onMpInitData: (settings: GameSettings, bg: string | null, virgen: string | null) => void;
+  onAssetsLoaded?: () => void;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -27,10 +34,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   virgenUrl,
   onGameOver,
   onScoreUpdate,
-  onShowCommentary
+  onShowCommentary,
+  onSessionItemsUpdate,
+  mpState,
+  onMpInitData,
+  onAssetsLoaded
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number | null>(null);
+  const [canvasStyle, setCanvasStyle] = useState<React.CSSProperties>({ width: '100%', height: 'auto' });
   
   // Independent timers for independent snake speeds
   const lastMoveTime1Ref = useRef<number>(0);
@@ -39,6 +51,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const virgenImageRef = useRef<HTMLImageElement | null>(null);
   
+  // Track loading status
+  const [bgLoaded, setBgLoaded] = useState(false);
+  const [virgenLoaded, setVirgenLoaded] = useState(false);
+
+  // Buffer for remote input (Host side)
+  const remoteInputRef = useRef<Direction | null>(null);
+
   // Game State Ref
   const stateRef = useRef<GameState>({
     snake1: { body: [], dx: 1, dy: 0, nextDx: 1, nextDy: 0, score: 0, colorType: 'orchid', name: 'P1', dead: false, immunityTimer: 0 },
@@ -57,51 +76,199 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     backgroundUrl: null,
     narratorText: '',
     chiguirosEaten: 0,
-    lastMilestone: 0
+    lastMilestone: 0,
+    sessionEatenItems: [],
+    weather: 'sunny',
+    rainIntensity: 0
   });
 
-  // Load Background Image
+  const setDirection = useCallback((snake: Snake, dir: Direction) => {
+      if (snake.dead) return;
+      if (dir === Direction.UP && snake.dy === 0) { snake.nextDx = 0; snake.nextDy = -1; }
+      if (dir === Direction.DOWN && snake.dy === 0) { snake.nextDx = 0; snake.nextDy = 1; }
+      if (dir === Direction.LEFT && snake.dx === 0) { snake.nextDx = -1; snake.nextDy = 0; }
+      if (dir === Direction.RIGHT && snake.dx === 0) { snake.nextDx = 1; snake.nextDy = 0; }
+  }, []);
+
+  // --- Handlers for Hook Callbacks ---
+  
+  const handleUpdateReceived = useCallback((update: UpdatePacket) => {
+      const currentState = stateRef.current;
+      stateRef.current = {
+          ...currentState,
+          snake1: update.snake1,
+          snake2: update.snake2,
+          chiguiro: update.chiguiro,
+          aguacate: update.aguacate,
+          virgen: update.virgen,
+          cafe: update.cafe,
+          bomb: update.bomb,
+          bola: update.bola,
+          weather: update.weather,
+          rainIntensity: update.rainIntensity,
+          isRunning: update.isRunning,
+          gameMode: update.gameMode 
+      };
+      onScoreUpdate(update.snake1.score, update.snake2.score);
+  }, [onScoreUpdate]);
+
+  const handleGameOverReceived = useCallback((payload: any) => {
+      onGameOver(payload.s1, payload.s2, payload.msg, payload.context, payload.chiguirosEaten, payload.winner);
+  }, [onGameOver]);
+
+  const handleRemoteInputReceived = useCallback((dir: Direction) => {
+      remoteInputRef.current = dir;
+  }, []);
+
+  // --- Use Custom Hooks ---
+
+  // Network Sync Logic
+  useMultiplayerSync(mpState, handleUpdateReceived, handleGameOverReceived, handleRemoteInputReceived);
+  
+  // Local Input Logic
+  const handleInput = useCallback((dir: Direction) => {
+      // If Client, send to Host
+      if (mpState.active && mpState.role === 'client') {
+          multiplayerService.send({ type: 'INPUT', payload: { dir } });
+          return;
+      }
+      
+      const { snake1, snake2 } = stateRef.current;
+      
+      // If Host, controls P1
+      if (mpState.active && mpState.role === 'host') {
+          setDirection(snake1, dir);
+          return;
+      }
+
+      // Local Mode
+      if (gameMode === 1) {
+          setDirection(snake1, dir);
+      } else {
+          // Note: Specific key mapping for Local 2P (WASD vs Arrows) is handled in the useEffect below
+          // This callback handles the generic "Direction Received" from Touch/Swipe or specific Key
+          const { controlsSwapped } = settings;
+          
+          // Heuristic: If we are in 2P Local, we assume this generic input comes from 
+          // a Swipe or Virtual Joystick, which defaults to controlling P1 (or the 'Arrow' snake)
+          // For proper 2P Keyboard support, see the Keyboard Event listener below.
+          const targetSnake = controlsSwapped ? snake2 : snake1;
+          setDirection(targetSnake, dir);
+      }
+  }, [mpState, gameMode, settings, setDirection]);
+
+  // Use Universal Input Hook (Touch + basic Keyboard)
+  useGameInput(isPlaying, gameMode, settings, mpState, handleInput);
+  
+  // Specialized Keyboard Handler for Local 2P (WASD vs Arrows)
+  // We kept this separate because useGameInput abstracts to a single 'onInput' direction
+  // which isn't enough for 2 players on one keyboard.
+  useEffect(() => {
+      const handleLocalKeys = (e: KeyboardEvent) => {
+          if (!isPlaying || mpState.active) return; // MP handled by useGameInput
+          if (gameMode === 1) return; // 1P handled by useGameInput
+
+          const { snake1, snake2 } = stateRef.current;
+          const { controlsSwapped } = settings;
+          
+          const arrowSnake = controlsSwapped ? snake2 : snake1;
+          const wasdSnake = controlsSwapped ? snake1 : snake2;
+
+          if (e.key === 'ArrowUp') setDirection(arrowSnake, Direction.UP);
+          if (e.key === 'ArrowDown') setDirection(arrowSnake, Direction.DOWN);
+          if (e.key === 'ArrowLeft') setDirection(arrowSnake, Direction.LEFT);
+          if (e.key === 'ArrowRight') setDirection(arrowSnake, Direction.RIGHT);
+
+          if (['w', 'W'].includes(e.key)) setDirection(wasdSnake, Direction.UP);
+          if (['s', 'S'].includes(e.key)) setDirection(wasdSnake, Direction.DOWN);
+          if (['a', 'A'].includes(e.key)) setDirection(wasdSnake, Direction.LEFT);
+          if (['d', 'D'].includes(e.key)) setDirection(wasdSnake, Direction.RIGHT);
+      };
+
+      window.addEventListener('keydown', handleLocalKeys);
+      return () => window.removeEventListener('keydown', handleLocalKeys);
+  }, [isPlaying, gameMode, settings, mpState.active, setDirection]);
+
+
+  // Handle Asset Loading and Readiness
   useEffect(() => {
       if (backgroundUrl) {
+          setBgLoaded(false);
           const img = new Image();
           img.src = backgroundUrl;
           img.onload = () => {
               bgImageRef.current = img;
+              setBgLoaded(true);
           };
+      } else {
+          setBgLoaded(true); 
+          bgImageRef.current = null;
       }
   }, [backgroundUrl]);
 
-  // Load Virgen Image
   useEffect(() => {
-    if (virgenUrl) {
-        const img = new Image();
-        img.src = virgenUrl;
-        img.onload = () => {
-            virgenImageRef.current = img;
-        };
-    }
+      if (virgenUrl) {
+          setVirgenLoaded(false);
+          const img = new Image();
+          img.src = virgenUrl;
+          img.onload = () => {
+              virgenImageRef.current = img;
+              setVirgenLoaded(true);
+          };
+      } else {
+          setVirgenLoaded(true); 
+          virgenImageRef.current = null;
+      }
   }, [virgenUrl]);
 
-  const isOccupied = (x: number, y: number, s1: Snake, s2: Snake) => {
-    if (s1.body.some(p => p.x === x && p.y === y)) return true;
-    if (s2.body.length > 0 && s2.body.some(p => p.x === x && p.y === y)) return true;
-    return false;
-  };
+  useEffect(() => {
+      if (bgLoaded && virgenLoaded) {
+          if (onAssetsLoaded) onAssetsLoaded();
+      }
+  }, [bgLoaded, virgenLoaded, onAssetsLoaded]);
+
 
   // Initialize Game
   const initGame = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    // HOST: Broadcast INIT packet to ensure clients are synced on start/restart
+    if (mpState.active && mpState.role === 'host') {
+        setTimeout(() => {
+            const initPacket: NetworkPacket = {
+                type: 'INIT',
+                payload: {
+                    settings,
+                    backgroundUrl, 
+                    virgenUrl
+                } as InitPacket
+            };
+            multiplayerService.send(initPacket);
+        }, 200);
+    }
 
-    const tilesX = Math.floor(canvas.width / TILE_SIZE);
-    const tilesY = Math.floor(canvas.height / TILE_SIZE);
+    // CLIENT: Set running and sync mode
+    if (mpState.active && mpState.role === 'client') {
+        stateRef.current.isRunning = true; 
+        stateRef.current.gameMode = gameMode; // Force Mode 2 for MP
+        
+        // Reset local snakes to "Alive" to prevent "Game Over" flash before first UPDATE packet
+        stateRef.current.snake1.dead = false;
+        stateRef.current.snake2.dead = false;
+        stateRef.current.snake1.body = [{x: -10, y: -10}]; 
+        stateRef.current.snake2.body = [{x: -10, y: -10}];
+        
+        return; 
+    }
 
-    // Generate Clouds with visual properties
+    // Use Fixed Logic Resolution
+    const tilesX = Math.floor(LOGICAL_WIDTH / TILE_SIZE);
+    const tilesY = Math.floor(LOGICAL_HEIGHT / TILE_SIZE);
+
+    // Generate Clouds 
     const clouds: Cloud[] = [];
     for (let i = 0; i < 5; i++) {
-        const y = Math.random() * (canvas.height / 2);
+        const y = Math.random() * (LOGICAL_HEIGHT / 2);
         clouds.push({
-            x: Math.random() * canvas.width,
+            x: Math.random() * LOGICAL_WIDTH,
             y: y,
             baseY: y,
             speed: 0.2 + Math.random() * 0.5,
@@ -159,17 +326,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     // Initial Food
     const randomFood = YOPAL_FOODS[Math.floor(Math.random() * YOPAL_FOODS.length)];
     
+    let pos = getRandomSafePosition(tilesX, tilesY);
     let chiguiro = { 
-        x: Math.floor(Math.random() * tilesX), 
-        y: Math.floor(Math.random() * tilesY), 
+        x: pos.x, 
+        y: pos.y, 
         active: true, 
         timer: 0,
         name: randomFood
     };
 
     while (isOccupied(chiguiro.x, chiguiro.y, s1, s2)) {
-        chiguiro.x = Math.floor(Math.random() * tilesX);
-        chiguiro.y = Math.floor(Math.random() * tilesY);
+        pos = getRandomSafePosition(tilesX, tilesY);
+        chiguiro.x = pos.x;
+        chiguiro.y = pos.y;
     }
 
     stateRef.current = {
@@ -189,11 +358,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         backgroundUrl: stateRef.current.backgroundUrl,
         narratorText: '',
         chiguirosEaten: 0,
-        lastMilestone: 0
+        lastMilestone: 0,
+        sessionEatenItems: [],
+        weather: 'sunny',
+        rainIntensity: 0
     };
     
     onScoreUpdate(0, 0);
-    setMusicIntensity(0); // Reset audio
+    setMusicIntensity(0); 
     setCoffeeMode(false);
 
     // Trigger Start Commentary
@@ -201,107 +373,57 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         if(stateRef.current.isRunning) onShowCommentary(msg);
     });
 
-  }, [gameMode, onScoreUpdate, onShowCommentary]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameMode, onScoreUpdate, onShowCommentary, mpState]);
 
-  const setDirection = (snake: Snake, dir: Direction) => {
-      if (snake.dead) return;
-      if (dir === Direction.UP && snake.dy === 0) { snake.nextDx = 0; snake.nextDy = -1; }
-      if (dir === Direction.DOWN && snake.dy === 0) { snake.nextDx = 0; snake.nextDy = 1; }
-      if (dir === Direction.LEFT && snake.dx === 0) { snake.nextDx = -1; snake.nextDy = 0; }
-      if (dir === Direction.RIGHT && snake.dx === 0) { snake.nextDx = 1; snake.nextDy = 0; }
-  };
-
-  // Input Handling
-  useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-          if (!isPlaying) return;
-          
-          const { snake1, snake2 } = stateRef.current;
-          const { controlsSwapped } = settings;
-
-          if (gameMode === 1) {
-              if (['ArrowUp', 'w', 'W'].includes(e.key)) setDirection(snake1, Direction.UP);
-              if (['ArrowDown', 's', 'S'].includes(e.key)) setDirection(snake1, Direction.DOWN);
-              if (['ArrowLeft', 'a', 'A'].includes(e.key)) setDirection(snake1, Direction.LEFT);
-              if (['ArrowRight', 'd', 'D'].includes(e.key)) setDirection(snake1, Direction.RIGHT);
-          } else {
-              const arrowSnake = controlsSwapped ? snake2 : snake1;
-              const wasdSnake = controlsSwapped ? snake1 : snake2;
-
-              if (e.key === 'ArrowUp') setDirection(arrowSnake, Direction.UP);
-              if (e.key === 'ArrowDown') setDirection(arrowSnake, Direction.DOWN);
-              if (e.key === 'ArrowLeft') setDirection(arrowSnake, Direction.LEFT);
-              if (e.key === 'ArrowRight') setDirection(arrowSnake, Direction.RIGHT);
-
-              if (['w', 'W'].includes(e.key)) setDirection(wasdSnake, Direction.UP);
-              if (['s', 'S'].includes(e.key)) setDirection(wasdSnake, Direction.DOWN);
-              if (['a', 'A'].includes(e.key)) setDirection(wasdSnake, Direction.LEFT);
-              if (['d', 'D'].includes(e.key)) setDirection(wasdSnake, Direction.RIGHT);
-          }
-      };
-
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, gameMode, settings]);
-
-  // Swipe Handling
-  useEffect(() => {
-    let touchStartX = 0;
-    let touchStartY = 0;
-
-    const handleTouchStart = (e: TouchEvent) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-        if (!stateRef.current.isRunning) return;
-        
-        const touchEndX = e.changedTouches[0].clientX;
-        const touchEndY = e.changedTouches[0].clientY;
-        
-        const dx = touchEndX - touchStartX;
-        const dy = touchEndY - touchStartY;
-        
-        if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal
-            if (Math.abs(dx) > 30) {
-                setDirection(stateRef.current.snake1, dx > 0 ? Direction.RIGHT : Direction.LEFT);
-            }
-        } else {
-            // Vertical
-            if (Math.abs(dy) > 30) {
-                setDirection(stateRef.current.snake1, dy > 0 ? Direction.DOWN : Direction.UP);
-            }
-        }
-    };
-
-    window.addEventListener('touchstart', handleTouchStart);
-    window.addEventListener('touchend', handleTouchEnd);
-
-    return () => {
-        window.removeEventListener('touchstart', handleTouchStart);
-        window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, []);
 
   const handleGameOverWrapper = useCallback((...args: Parameters<typeof onGameOver>) => {
+      // If Host, broadcast Game Over
+      if (mpState.active && mpState.role === 'host') {
+          multiplayerService.send({ 
+              type: 'GAME_OVER', 
+              payload: { 
+                  s1: args[0], s2: args[1], msg: args[2], context: args[3], chiguirosEaten: args[4], winner: args[5] 
+              } 
+          });
+      }
+      
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      // Sync items before Game Over
+      onSessionItemsUpdate(stateRef.current.sessionEatenItems);
       onGameOver(...args);
-  }, [onGameOver]);
+  }, [onGameOver, onSessionItemsUpdate, mpState]);
 
   // Game Loop
   const loop = useCallback((time: number) => {
+    // If not running, stop
     if (!stateRef.current.isRunning) return;
 
+    // CLIENT MODE: Skip logic, just render state
+    if (mpState.active && mpState.role === 'client') {
+        const canvas = canvasRef.current;
+        if (canvas) {
+             const ctx = canvas.getContext('2d');
+             if (ctx) {
+                 drawGame(
+                    ctx, 
+                    stateRef.current, 
+                    { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current }, 
+                    time, 
+                    settings.retroMode
+                 );
+             }
+        }
+        updateVisuals(time); 
+        requestRef.current = requestAnimationFrame(loop);
+        return;
+    }
+
+    // HOST/LOCAL MODE: Run Logic
     const baseInterval = SPEEDS[settings.difficulty];
 
-    // Dynamic Difficulty: Speed increases with score
-    // Decrease interval by 4ms for every 50 points
-    // This allows the game to naturally speed up as the player gets better
     const getDynamicInterval = (score: number) => {
         const reduction = Math.floor(score / 50) * 4;
-        // Cap the speed at 40ms to keep it playable
         return Math.max(40, baseInterval - reduction);
     };
 
@@ -343,11 +465,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     
     // Logic Update (Only if at least one snake moves)
     if ((moveP1 || moveP2) && canvas) {
+        
+        // Host: Apply buffered remote input for Snake 2 before update
+        if (mpState.active && mpState.role === 'host' && remoteInputRef.current) {
+            setDirection(stateRef.current.snake2, remoteInputRef.current);
+            remoteInputRef.current = null; // Consume input
+        }
+
         updateGame(
             stateRef.current,
             settings,
-            canvas.width,
-            canvas.height,
             {
                 onScoreUpdate,
                 onGameOver: handleGameOverWrapper,
@@ -356,6 +483,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             moveP1,
             moveP2
         );
+        
+        // Host: Broadcast State
+        if (mpState.active && mpState.role === 'host') {
+             const packet: NetworkPacket = {
+                 type: 'UPDATE',
+                 payload: {
+                    snake1: stateRef.current.snake1,
+                    snake2: stateRef.current.snake2,
+                    chiguiro: stateRef.current.chiguiro,
+                    aguacate: stateRef.current.aguacate,
+                    virgen: stateRef.current.virgen,
+                    cafe: stateRef.current.cafe,
+                    bomb: stateRef.current.bomb,
+                    bola: stateRef.current.bola,
+                    weather: stateRef.current.weather,
+                    rainIntensity: stateRef.current.rainIntensity,
+                    isRunning: stateRef.current.isRunning,
+                    gameMode: stateRef.current.gameMode
+                 } as UpdatePacket
+             };
+             multiplayerService.send(packet);
+        }
     }
 
     // Visual Update (Clouds, Particles) - Always runs for smoothness
@@ -370,14 +519,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 stateRef.current, 
                 { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current }, 
                 time, 
-                canvas.width, 
-                canvas.height
+                settings.retroMode
             );
         }
     }
     
     requestRef.current = requestAnimationFrame(loop);
-  }, [settings.difficulty, settings.bombsEnabled, onScoreUpdate, handleGameOverWrapper, onShowCommentary, settings, gameMode]); 
+  }, [settings.difficulty, settings.retroMode, settings.bombsEnabled, onScoreUpdate, handleGameOverWrapper, onShowCommentary, settings, gameMode, mpState, setDirection]); 
 
   useEffect(() => {
       if (isPlaying) {
@@ -396,14 +544,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const updateVisuals = (time: number) => {
       const state = stateRef.current;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
+      
       // Update Clouds (Dynamic floating)
       state.clouds.forEach(c => {
           c.x += c.speed;
-          c.y = c.baseY + Math.sin(time * 0.001 + c.wobbleOffset) * 5; // Gentle up/down
-          if (c.x > canvas.width) c.x = -c.size * 2;
+          c.y = c.baseY + Math.sin(time * 0.001 + c.wobbleOffset) * 5; 
+          if (c.x > LOGICAL_WIDTH) c.x = -c.size * 2;
       });
 
       // Update Particles
@@ -416,39 +562,37 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       state.particles = state.particles.filter(p => p.life > 0);
   };
 
-  // Resize Logic
+  // Responsive Scaling Logic (Letterbox/Fit)
   useEffect(() => {
       const resize = () => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          
-          const container = canvas.parentElement;
+          const container = canvasRef.current?.parentElement;
           if (container) {
-              const width = Math.min(container.clientWidth, 900);
-              
-              // Responsive height calculation
-              // Subtract rough header height (160px) and padding
-              const availableHeight = window.innerHeight - 180; 
-              // Set a reasonable min/max range for gameplay
-              const height = Math.min(Math.max(300, availableHeight), 800);
-              
-              canvas.width = Math.floor(width / TILE_SIZE) * TILE_SIZE;
-              canvas.height = Math.floor(height / TILE_SIZE) * TILE_SIZE;
+              const availW = container.clientWidth;
+              const availH = window.innerHeight - 120; 
+              const scale = Math.min(availW / LOGICAL_WIDTH, availH / LOGICAL_HEIGHT);
+
+              setCanvasStyle({
+                  width: `${LOGICAL_WIDTH * scale}px`,
+                  height: `${LOGICAL_HEIGHT * scale}px`,
+                  imageRendering: settings.retroMode ? 'pixelated' : 'auto'
+              });
           }
       };
       window.addEventListener('resize', resize);
       resize();
       return () => window.removeEventListener('resize', resize);
-  }, []);
-
-  const handleJoystickDir = useCallback((dir: Direction) => {
-      setDirection(stateRef.current.snake1, dir);
-  }, []);
+  }, [settings.retroMode]);
 
   return (
     <>
-        <canvas ref={canvasRef} className="bg-[#81C784] max-w-full mx-auto border-b-4 border-[#5D4037] touch-none" />
-        <VirtualJoystick enabled={settings.useJoystick} onDirectionChange={handleJoystickDir} />
+        <canvas 
+            ref={canvasRef} 
+            width={LOGICAL_WIDTH}
+            height={LOGICAL_HEIGHT}
+            style={canvasStyle}
+            className={`mx-auto border-b-4 border-[#5D4037] touch-none ${settings.retroMode ? 'bg-[#99A906]' : 'bg-[#81C784]'}`} 
+        />
+        <VirtualJoystick enabled={settings.useJoystick} onDirectionChange={handleInput} />
     </>
   );
 };

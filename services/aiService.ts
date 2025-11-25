@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -21,61 +22,61 @@ const handleApiError = (error: any, context: string) => {
     }
 };
 
-// Fallback Data for Offline Mode (Enhanced Cache)
+// Fallback Data for Offline Mode (Enhanced Cache - Authentic Llanero/Yopal Slang)
 const FALLBACKS = {
     start: [
-        "¡Arre biros!",
-        "¡Vamonos pariente!",
-        "¡Jupa, familia!",
-        "¡A darle guaya!",
-        "¡Se vino el joropo!",
-        "¡Póngase las pilas!",
-        "¡Ajilando que es tarde!",
-        "¡A trote largo, compa!",
-        "¡El llano es lindo, carajo!",
-        "¡Suelte el rejo!",
-        "¡Con el pie derecho!",
-        "¡A lo que vinimos!"
+        "¡Arre biros, camarita!",
+        "¡Desde Yopal pa'l mundo!",
+        "¡Suelte el rejo, pariente!",
+        "¡Ajilando, que es pa' hoy!",
+        "¡A trote largo, cuñao!",
+        "¡Con la venia de la Virgen!",
+        "¡Póngase las alpargatas!",
+        "¡Zapatéelo, que hay espinas!",
+        "¡El Llano es grande, carajo!",
+        "¡Vamonos, que anochece!",
+        "¡A lo que vinimos, catire!",
+        "¡Firme como botalón de hato!"
     ],
     milestone: [
-        "¡Eso va es pa' lante!",
-        "¡Qué llanerazo!",
-        "¡Siga así, compa!",
-        "¡Va volando!",
-        "¡Buena esa, pariente!",
-        "¡Usted sí es criollo!",
-        "¡Va como viento en popa!",
-        "¡Ese es mi gallo!",
-        "¡No le afloje!",
-        "¡Firme como el Araguaney!",
-        "¡Está rindiendo el día!",
-        "¡Mucho pulso, camarita!"
+        "¡Va más rápido que incendio!",
+        "¡Usted sí es mucho criollo!",
+        "¡Ta' comiendo más que chigüiro!",
+        "¡Más llanero que el topocho!",
+        "¡Ese es mi gallo giro!",
+        "¡Rindiendo como arroz llanero!",
+        "¡Siga así, no le afloje!",
+        "¡Va volando, pariente!",
+        "¡Eso es pura casta casanareña!",
+        "¡Qué jodienda tan buena!",
+        "¡Bravo como toro de casta!",
+        "¡Se le nota la clase, compa!"
     ],
     relic: [
-        "¡Ave María, qué bendición!",
-        "¡La Virgen lo acompañe!",
-        "¡Santo patrono!",
-        "¡Bendito sea Dios!",
-        "¡Milagro en el hato!",
+        "¡La Virgen de Manare lo cuida!",
+        "¡Bendito sea mi Dios!",
+        "¡Milagro en el estero!",
         "¡La Patrona está con usted!",
-        "¡Gloria al cielo!",
+        "¡Ave María Purísima!",
         "¡Qué santas vainas!",
-        "¡Bendición del cielo!",
-        "¡Se le apareció la Virgen!"
+        "¡Bendición del cielo, camarita!",
+        "¡Se le apareció la Virgen!",
+        "¡Gloria al Casanare!",
+        "¡Santo patrono, qué suerte!"
     ],
     game_over: [
+        "¡Se le aguó la fiesta!",
+        "¡Quedó silbando en la loma!",
         "¡Se nos fue la lapa!",
-        "¡Ay caracha!",
-        "¡Qué vaina tan seria!",
-        "¡Se acabó el parrando!",
-        "¡A recoger los bártulos!",
-        "¡Lo cogió la noche!",
-        "¡Hasta aquí llegó el rio!",
-        "¡Guinde la hamaca, pariente!",
-        "¡A llorar pa' los caños!",
+        "¡Ay caracha, mi compa!",
+        "¡Mucho guate pa' esta vaina!",
+        "¡Guinde la hamaca y descanse!",
         "¡Se le mojó la canoa!",
+        "¡A llorar al Caño Seco!",
+        "¡Lo cogió la noche, pariente!",
         "¡Quedó viendo un chispero!",
-        "¡Vaya a pelar papas!"
+        "¡Se acabó el parrando!",
+        "¡Vaya a pelar papas, cuñao!"
     ]
 };
 
@@ -92,11 +93,11 @@ export const generateLlaneroBackground = async (): Promise<string | null> => {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: 'Digital art, wide angle landscape of the Colombian plains "Llanos Orientales" in Casanare Yopal at sunset. Features a river, morichal palm trees, orange and pink sky, flat green savannah. Vibrant, vector art style suitable for a video game background. No text.' }]
+        parts: [{ text: 'Digital art, landscape of the Colombian plains "Llanos Orientales" in Casanare Yopal at sunset. Features a river, morichal palm trees, orange and pink sky, flat green savannah. Vibrant, vector art style suitable for a video game background. No text.' }]
       },
       config: {
         imageConfig: {
-            aspectRatio: "4:3"
+            aspectRatio: "1:1"
         }
       }
     });
@@ -157,17 +158,17 @@ export const generateNarratorCommentary = async (
   try {
     let prompt = "";
     
-    // EXTREMELY SHORT prompts for speed
-    const baseInstruction = `You are "Don Chepe", a llanero narrator. Speak in Colombian Llanero slang. Max 5 words.`;
+    // Updated Persona: Authentic Yopal Narrator
+    const baseInstruction = `You are "Don Chepe", an old, wise, and witty narrator from Yopal, Casanare. Speak in authentic Colombian Llanero slang. Use words like "pariente", "camarita", "cuñao", "vaina", "criollo". Max 6 words.`;
 
     if (type === 'start') {
-        prompt = `${baseInstruction} Say "Let's start!" enthusiastically in slang.`;
+        prompt = `${baseInstruction} Say something energetic to start the journey in the plains.`;
     } else if (type === 'milestone') {
-        prompt = `${baseInstruction} Praise score ${context?.score}.`;
+        prompt = `${baseInstruction} Praise the player's score of ${context?.score} using a rural metaphor (e.g., fast horse, strong bull).`;
     } else if (type === 'relic') {
-        prompt = `${baseInstruction} Say "Holy Virgin!" or "Blessing!".`;
+        prompt = `${baseInstruction} Exclaim "Holy Virgin of Manare!" or similar religious blessing.`;
     } else if (type === 'game_over') {
-        prompt = `${baseInstruction} React to loss.`;
+        prompt = `${baseInstruction} Make a short, funny comment about losing or crashing in the savannah.`;
     }
 
     const response = await ai.models.generateContent({
@@ -180,6 +181,20 @@ export const generateNarratorCommentary = async (
     return getFallback(type);
   }
 };
+
+export const generateFoodFact = async (foodName: string): Promise<string> => {
+    if (isRateLimited()) return `${foodName} es un plato típico delicioso del Llano.`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `You are a local guide from Yopal. Describe the Colombian food "${foodName}" in 1 short, fun sentence for a tourist. Mention why it's special in Casanare.`
+        });
+        return response.text?.trim() || `${foodName} es muy sabroso.`;
+    } catch (error) {
+        return `${foodName} es un clásico del Llano.`;
+    }
+}
 
 // --- Audio / TTS Generation ---
 
@@ -235,7 +250,7 @@ export const speakLlaneroText = async (text: string) => {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
                     voiceConfig: {
-                        // 'Puck' is often punchier and faster-feeling
+                        // 'Puck' is often punchier and faster-feeling, good for a game announcer
                         prebuiltVoiceConfig: { voiceName: 'Puck' }, 
                     },
                 },
@@ -261,7 +276,3 @@ export const speakLlaneroText = async (text: string) => {
         handleApiError(e, "speakLlaneroText");
     }
 };
-
-export const generateGastronomyList = async (): Promise<string[]> => {
-    return []; 
-}
