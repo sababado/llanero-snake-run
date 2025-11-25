@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { X, Loader2, Utensils } from 'lucide-react';
-import { generateFoodFact } from '../services/aiService';
+import { generateFoodFact } from '../services/ai/narrator';
 
 interface GastronomyModalProps {
     items: string[];

@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { generateLlaneroBackground, generateVirgenAsset } from '../services/aiService';
+import { generateLlaneroBackground, generateVirgenAsset } from '../services/ai/visuals';
 
 export const useGameAssets = () => {
     const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);

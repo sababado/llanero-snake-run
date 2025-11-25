@@ -1,15 +1,17 @@
 
+
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { GameSettings, Snake, Cloud, Direction, GameState, MultiplayerState, NetworkPacket, InputPacket, InitPacket, UpdatePacket } from '../types';
+import { GameSettings, Snake, Cloud, Direction, GameState, MultiplayerState, NetworkPacket, InitPacket, UpdatePacket, GameEvent, NarrationPayload } from '../types';
 import { SPEEDS, TILE_SIZE, YOPAL_FOODS, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
 import VirtualJoystick from './VirtualJoystick';
-import { generateNarratorCommentary } from '../services/aiService';
+import { generateNarratorCommentary } from '../services/ai/narrator';
 import { setMusicIntensity, setCoffeeMode } from '../services/audioService';
 import { drawGame } from '../game/renderer';
 import { updateGame, getRandomSafePosition, isOccupied } from '../game/logic';
 import { multiplayerService } from '../services/multiplayerService';
 import { useGameInput } from '../hooks/useGameInput';
 import { useMultiplayerSync } from '../hooks/useMultiplayerSync';
+import { useGameLoop } from '../hooks/useGameLoop';
 
 interface GameCanvasProps {
   settings: GameSettings;
@@ -41,7 +43,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   onAssetsLoaded
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const requestRef = useRef<number | null>(null);
   const [canvasStyle, setCanvasStyle] = useState<React.CSSProperties>({ width: '100%', height: 'auto' });
   
   // Independent timers for independent snake speeds
@@ -89,6 +90,39 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       if (dir === Direction.LEFT && snake.dx === 0) { snake.nextDx = -1; snake.nextDy = 0; }
       if (dir === Direction.RIGHT && snake.dx === 0) { snake.nextDx = 1; snake.nextDy = 0; }
   }, []);
+
+  // --- Event Handling (Controller) ---
+  const handleGameEvents = useCallback((events: GameEvent[]) => {
+      events.forEach(event => {
+          switch(event.type) {
+              case 'SCORE_UPDATE':
+                  onScoreUpdate(event.payload.s1, event.payload.s2);
+                  break;
+              case 'GAME_OVER':
+                  const p = event.payload;
+                  // If Host, broadcast Game Over
+                  if (mpState.active && mpState.role === 'host') {
+                      multiplayerService.send({ type: 'GAME_OVER', payload: p });
+                  }
+                  onSessionItemsUpdate(stateRef.current.sessionEatenItems);
+                  onGameOver(p.score1, p.score2, p.msg, p.context, p.chiguirosEaten, p.winner);
+                  break;
+              case 'MUSIC_INTENSITY':
+                  setMusicIntensity(event.payload);
+                  break;
+              case 'NARRATION':
+                  const narration = event.payload as NarrationPayload;
+                  if (narration.text) {
+                      onShowCommentary(narration.text);
+                  } else {
+                      generateNarratorCommentary(narration.type, narration.context).then(msg => {
+                          if (stateRef.current.isRunning) onShowCommentary(msg);
+                      });
+                  }
+                  break;
+          }
+      });
+  }, [onScoreUpdate, onGameOver, onSessionItemsUpdate, onShowCommentary, mpState]);
 
   // --- Handlers for Hook Callbacks ---
   
@@ -161,8 +195,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   useGameInput(isPlaying, gameMode, settings, mpState, handleInput);
   
   // Specialized Keyboard Handler for Local 2P (WASD vs Arrows)
-  // We kept this separate because useGameInput abstracts to a single 'onInput' direction
-  // which isn't enough for 2 players on one keyboard.
   useEffect(() => {
       const handleLocalKeys = (e: KeyboardEvent) => {
           if (!isPlaying || mpState.active) return; // MP handled by useGameInput
@@ -376,26 +408,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, onScoreUpdate, onShowCommentary, mpState]);
 
-
-  const handleGameOverWrapper = useCallback((...args: Parameters<typeof onGameOver>) => {
-      // If Host, broadcast Game Over
-      if (mpState.active && mpState.role === 'host') {
-          multiplayerService.send({ 
-              type: 'GAME_OVER', 
-              payload: { 
-                  s1: args[0], s2: args[1], msg: args[2], context: args[3], chiguirosEaten: args[4], winner: args[5] 
-              } 
-          });
-      }
-      
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      // Sync items before Game Over
-      onSessionItemsUpdate(stateRef.current.sessionEatenItems);
-      onGameOver(...args);
-  }, [onGameOver, onSessionItemsUpdate, mpState]);
-
-  // Game Loop
-  const loop = useCallback((time: number) => {
+  // Game Loop Function
+  const gameLoop = useCallback((time: number) => {
     // If not running, stop
     if (!stateRef.current.isRunning) return;
 
@@ -415,7 +429,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
              }
         }
         updateVisuals(time); 
-        requestRef.current = requestAnimationFrame(loop);
         return;
     }
 
@@ -472,17 +485,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             remoteInputRef.current = null; // Consume input
         }
 
+        const events: GameEvent[] = [];
         updateGame(
             stateRef.current,
             settings,
-            {
-                onScoreUpdate,
-                onGameOver: handleGameOverWrapper,
-                onShowCommentary
-            },
             moveP1,
-            moveP2
+            moveP2,
+            events // Pass array to collect side effects
         );
+
+        // Handle Side Effects
+        handleGameEvents(events);
         
         // Host: Broadcast State
         if (mpState.active && mpState.role === 'host') {
@@ -523,24 +536,21 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             );
         }
     }
-    
-    requestRef.current = requestAnimationFrame(loop);
-  }, [settings.difficulty, settings.retroMode, settings.bombsEnabled, onScoreUpdate, handleGameOverWrapper, onShowCommentary, settings, gameMode, mpState, setDirection]); 
+  }, [settings.difficulty, settings.retroMode, settings.bombsEnabled, settings, gameMode, mpState, setDirection, handleGameEvents]); 
 
+  // Initialize and Loop Hook
   useEffect(() => {
       if (isPlaying) {
           initGame();
           lastMoveTime1Ref.current = performance.now();
           lastMoveTime2Ref.current = performance.now();
-          requestRef.current = requestAnimationFrame(loop);
       } else {
-          if (requestRef.current) cancelAnimationFrame(requestRef.current);
           stateRef.current.isRunning = false;
       }
-      return () => {
-          if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      };
-  }, [isPlaying, initGame, loop]);
+  }, [isPlaying, initGame]);
+
+  useGameLoop(gameLoop, isPlaying);
+
 
   const updateVisuals = (time: number) => {
       const state = stateRef.current;

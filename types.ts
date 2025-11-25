@@ -160,3 +160,38 @@ export interface UpdatePacket {
 export interface InputPacket {
   dir: Direction;
 }
+
+// --- Game Events (For Clean Architecture) ---
+// These events decouple the Game Logic from the UI/Audio implementation.
+
+export type GameEventType = 
+  | 'SCORE_UPDATE' 
+  | 'GAME_OVER' 
+  | 'NARRATION' 
+  | 'PLAY_SOUND'
+  | 'MUSIC_INTENSITY';
+
+export interface GameEvent {
+  type: GameEventType;
+  payload?: any;
+}
+
+export interface GameScorePayload {
+  s1: number;
+  s2: number;
+}
+
+export interface GameOverPayload {
+  score1: number; 
+  score2: number; 
+  msg: string; 
+  context: { score: number, cause: string }; 
+  chiguirosEaten: number;
+  winner: 'p1' | 'p2' | 'tie' | null;
+}
+
+export interface NarrationPayload {
+  type: 'start' | 'milestone' | 'game_over' | 'relic' | 'powerup';
+  text?: string; // Optional direct text override
+  context?: any;
+}

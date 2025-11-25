@@ -1,22 +1,8 @@
 
 
-import { GameState, GameSettings, Snake } from '../types';
+import { GameState, GameSettings, Snake, GameEvent, GameOverPayload, NarrationPayload } from '../types';
 import { TILE_SIZE, YOPAL_FOODS, TRANSLATIONS, MAX_IMMUNITY, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
-import { setMusicIntensity } from '../services/audioService';
-import { generateNarratorCommentary } from '../services/aiService';
-
-export interface GameCallbacks {
-    onScoreUpdate: (s1: number, s2: number) => void;
-    onGameOver: (
-        score1: number, 
-        score2: number, 
-        msg: string, 
-        context: { score: number, cause: string }, 
-        chiguirosEaten: number, 
-        winner: 'p1' | 'p2' | 'tie' | null
-    ) => void;
-    onShowCommentary: (msg: string) => void;
-}
+import { GAME_BALANCE } from './balance';
 
 const tilesX = Math.floor(LOGICAL_WIDTH / TILE_SIZE);
 const tilesY = Math.floor(LOGICAL_HEIGHT / TILE_SIZE);
@@ -40,21 +26,21 @@ export const getRandomSafePosition = (tx: number, ty: number) => {
 export const updateGame = (
     state: GameState,
     settings: GameSettings,
-    callbacks: GameCallbacks,
     moveP1: boolean,
-    moveP2: boolean
+    moveP2: boolean,
+    events: GameEvent[] // Mutate this array to push events
 ) => {
     updateWeather(state);
 
     // Move Snakes
-    if (moveP1) moveSnake(state.snake1, state, callbacks);
-    if (state.gameMode === 2 && moveP2) moveSnake(state.snake2, state, callbacks);
+    if (moveP1) moveSnake(state.snake1, state, events);
+    if (state.gameMode === 2 && moveP2) moveSnake(state.snake2, state, events);
 
     // Handle collisions and entities if either moved
     if (moveP1 || moveP2) {
         updateEntities(state, settings, tilesX, tilesY);
         
-        const gameOver = checkCollisions(state, settings, callbacks);
+        const gameOver = checkCollisions(state, settings, events);
         if (gameOver) return;
     }
 };
@@ -63,20 +49,21 @@ export const updateGame = (
 
 const updateWeather = (state: GameState) => {
     const totalScore = state.snake1.score + state.snake2.score;
+    const { RAIN_START_CHANCE, RAIN_INCREMENT, RAIN_MAX_INTENSITY, RAIN_STOP_CHANCE, DAY_NIGHT_THRESHOLD_1, DAY_NIGHT_THRESHOLD_2 } = GAME_BALANCE.WEATHER;
     
     // Day/Night Cycle
-    if (totalScore < 150) state.weather = 'sunny';
-    else if (totalScore < 300) state.weather = 'sunset';
+    if (totalScore < DAY_NIGHT_THRESHOLD_1) state.weather = 'sunny';
+    else if (totalScore < DAY_NIGHT_THRESHOLD_2) state.weather = 'sunset';
     else state.weather = 'night';
 
     // Random Rain (Invierno Mode)
     if (state.weather !== 'night') { 
-        if (state.rainIntensity === 0 && Math.random() < 0.0005) {
+        if (state.rainIntensity === 0 && Math.random() < RAIN_START_CHANCE) {
             state.rainIntensity = 0.1; 
         } else if (state.rainIntensity > 0) {
-            state.rainIntensity += 0.005;
-            if (state.rainIntensity > 1.5) state.rainIntensity = 1.5; 
-            if (state.rainIntensity > 0.5 && Math.random() < 0.002) {
+            state.rainIntensity += RAIN_INCREMENT;
+            if (state.rainIntensity > RAIN_MAX_INTENSITY) state.rainIntensity = RAIN_MAX_INTENSITY; 
+            if (state.rainIntensity > 0.5 && Math.random() < RAIN_STOP_CHANCE) {
                 state.rainIntensity = 0;
             }
         }
@@ -85,7 +72,7 @@ const updateWeather = (state: GameState) => {
     }
 };
 
-const moveSnake = (snake: Snake, state: GameState, callbacks: GameCallbacks) => {
+const moveSnake = (snake: Snake, state: GameState, events: GameEvent[]) => {
     if (snake.dead) return;
     if (snake.immunityTimer > 0) snake.immunityTimer--;
 
@@ -104,68 +91,70 @@ const moveSnake = (snake: Snake, state: GameState, callbacks: GameCallbacks) => 
     const head = { x: newX, y: newY };
     snake.body.unshift(head);
 
-    handleInteraction(snake, head, state, callbacks);
+    handleInteraction(snake, head, state, events);
 };
 
-const handleInteraction = (snake: Snake, head: {x: number, y: number}, state: GameState, callbacks: GameCallbacks) => {
+const handleInteraction = (snake: Snake, head: {x: number, y: number}, state: GameState, events: GameEvent[]) => {
+    const { SCORING, PARTICLES } = GAME_BALANCE;
+
     // Chigüiro (Food)
     if (head.x === state.chiguiro.x && head.y === state.chiguiro.y) {
-        snake.score += 10;
+        snake.score += SCORING.FOOD;
         state.chiguirosEaten += 1;
         
         if (state.chiguiro.name && !state.sessionEatenItems.includes(state.chiguiro.name)) {
             state.sessionEatenItems.push(state.chiguiro.name);
         }
 
-        callbacks.onScoreUpdate(state.snake1.score, state.snake2.score);
-        spawnParticles(state, head.x, head.y, '#795548', 12);
+        events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
+        events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
+        
+        spawnParticles(state, head.x, head.y, PARTICLES.FOOD_COLOR, PARTICLES.FOOD_COUNT);
 
-        if (snake.score > state.lastMilestone && snake.score % 50 === 0) {
+        if (snake.score > state.lastMilestone && snake.score % SCORING.MILESTONE_INTERVAL === 0) {
             state.lastMilestone = snake.score;
-            generateNarratorCommentary('milestone', { score: snake.score }).then(msg => {
-                if (state.isRunning) callbacks.onShowCommentary(msg);
+            events.push({ 
+                type: 'NARRATION', 
+                payload: { type: 'milestone', context: { score: snake.score } } as NarrationPayload 
             });
         }
 
-        setMusicIntensity(state.snake1.score + state.snake2.score);
         respawnFood(state);
     }
     // Aguacate (Bonus)
     else if (state.aguacate.active && head.x === state.aguacate.x && head.y === state.aguacate.y) {
-        snake.score += 50;
+        snake.score += SCORING.AGUACATE;
         state.aguacate.active = false;
-        spawnParticles(state, head.x, head.y, '#AED581', 20);
-        callbacks.onScoreUpdate(state.snake1.score, state.snake2.score);
-        setMusicIntensity(state.snake1.score + state.snake2.score);
+        spawnParticles(state, head.x, head.y, PARTICLES.BONUS_COLOR, PARTICLES.BONUS_COUNT);
+        events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
+        events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
         snake.body.pop();
     }
     // Virgen (Relic)
     else if (state.virgen.active && head.x === state.virgen.x && head.y === state.virgen.y) {
-        snake.score += 200;
+        snake.score += SCORING.VIRGEN;
         state.virgen.active = false;
-        spawnParticles(state, head.x, head.y, '#FFD700', 30);
-        callbacks.onScoreUpdate(state.snake1.score, state.snake2.score);
-        setMusicIntensity(state.snake1.score + state.snake2.score);
-        generateNarratorCommentary('relic').then(msg => {
-                if (state.isRunning) callbacks.onShowCommentary(msg);
-        });
+        spawnParticles(state, head.x, head.y, PARTICLES.RELIC_COLOR, PARTICLES.RELIC_COUNT);
+        events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
+        events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
+        events.push({ type: 'NARRATION', payload: { type: 'relic' } as NarrationPayload });
         snake.body.pop();
     }
     // Cafe (Powerup)
     else if (state.cafe.active && head.x === state.cafe.x && head.y === state.cafe.y) {
-        snake.score += 30;
+        snake.score += SCORING.CAFE;
         state.cafe.active = false;
         snake.immunityTimer = MAX_IMMUNITY; 
-        spawnParticles(state, head.x, head.y, '#3E2723', 25); 
-        callbacks.onScoreUpdate(state.snake1.score, state.snake2.score);
-        callbacks.onShowCommentary("¡Un tintico pa'l alma!");
+        spawnParticles(state, head.x, head.y, PARTICLES.POWERUP_COLOR, PARTICLES.POWERUP_COUNT); 
+        events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
+        events.push({ type: 'NARRATION', payload: { type: 'powerup', text: "¡Un tintico pa'l alma!" } as NarrationPayload });
         snake.body.pop();
     }
     // Bomb (Trap)
     else if (state.bomb.active && head.x === state.bomb.x && head.y === state.bomb.y) {
         if (snake.immunityTimer > 0) {
             state.bomb.active = false;
-            spawnParticles(state, head.x, head.y, '#000000', 10);
+            spawnParticles(state, head.x, head.y, PARTICLES.TRAP_COLOR, PARTICLES.TRAP_COUNT);
         } else {
             snake.dead = true;
         }
@@ -182,10 +171,12 @@ const handleInteraction = (snake: Snake, head: {x: number, y: number}, state: Ga
 };
 
 const updateEntities = (state: GameState, settings: GameSettings, tx: number, ty: number) => {
+    const { ITEMS } = GAME_BALANCE;
+
     // Bola de Fuego Logic
     if (settings.bombsEnabled) {
         if (!state.bola.active) {
-            if (Math.random() < 0.02) {
+            if (Math.random() < ITEMS.BOLA.SPAWN_CHANCE) {
                 state.bola.active = true;
                 const pos = getRandomSafePosition(tx, ty);
                 state.bola.x = pos.x;
@@ -193,7 +184,7 @@ const updateEntities = (state: GameState, settings: GameSettings, tx: number, ty
             }
         } else {
             state.bola.moveTimer++;
-            if (state.bola.moveTimer > 2) {
+            if (state.bola.moveTimer > ITEMS.BOLA.MOVE_SPEED_THRESHOLD) {
                 state.bola.moveTimer = 0;
                 const target = state.snake1.body[0];
                 if (target) {
@@ -238,12 +229,12 @@ const updateEntities = (state: GameState, settings: GameSettings, tx: number, ty
         }
     };
 
-    updateItem(state.aguacate, 0.01, 60);
-    updateItem(state.virgen, 0.002, 200);
-    updateItem(state.cafe, 0.005, 150);
+    updateItem(state.aguacate, ITEMS.AGUACATE.CHANCE, ITEMS.AGUACATE.DURATION);
+    updateItem(state.virgen, ITEMS.VIRGEN.CHANCE, ITEMS.VIRGEN.DURATION);
+    updateItem(state.cafe, ITEMS.CAFE.CHANCE, ITEMS.CAFE.DURATION);
 };
 
-const checkCollisions = (state: GameState, settings: GameSettings, callbacks: GameCallbacks): boolean => {
+const checkCollisions = (state: GameState, settings: GameSettings, events: GameEvent[]): boolean => {
     const checkSelf = (snake: Snake) => {
         if (snake.dead || snake.immunityTimer > 0) return;
         const head = snake.body[0];
@@ -279,7 +270,7 @@ const checkCollisions = (state: GameState, settings: GameSettings, callbacks: Ga
     }
 
     if ((state.gameMode === 1 && state.snake1.dead) || (state.gameMode === 2 && (state.snake1.dead || state.snake2.dead))) {
-        triggerGameOver(state, settings, callbacks);
+        triggerGameOver(state, settings, events);
         return true;
     }
     return false;
@@ -297,7 +288,7 @@ const respawnFood = (state: GameState) => {
     }
 };
 
-const triggerGameOver = (state: GameState, settings: GameSettings, callbacks: GameCallbacks) => {
+const triggerGameOver = (state: GameState, settings: GameSettings, events: GameEvent[]) => {
     state.isRunning = false;
     const t = TRANSLATIONS[settings.language];
     let msg = "";
@@ -324,14 +315,16 @@ const triggerGameOver = (state: GameState, settings: GameSettings, callbacks: Ga
         }
     }
 
-    callbacks.onGameOver(
-      state.snake1.score, 
-      state.snake2.score, 
-      msg, 
-      { score: state.snake1.score, cause },
-      state.chiguirosEaten,
-      winner
-    );
+    const payload: GameOverPayload = {
+        score1: state.snake1.score, 
+        score2: state.snake2.score, 
+        msg, 
+        context: { score: state.snake1.score, cause },
+        chiguirosEaten: state.chiguirosEaten,
+        winner
+    };
+
+    events.push({ type: 'GAME_OVER', payload });
 };
 
 export const spawnParticles = (state: GameState, x: number, y: number, color: string, count: number = 8) => {

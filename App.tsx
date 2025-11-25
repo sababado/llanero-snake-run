@@ -1,10 +1,9 @@
 
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { GameSettings, GameStats, MultiplayerState, NetworkPacket, InitPacket, ReadyPacket, AppView } from './types';
 import { TRANSLATIONS, INITIAL_SETTINGS, APP_VERSION } from './constants';
 import GameCanvas from './components/GameCanvas';
-import { generateNarratorCommentary, speakLlaneroText } from './services/aiService';
+import { generateNarratorCommentary, speakLlaneroText } from './services/ai/narrator';
 import { initAudio, startMusic, stopMusic, playGameOverJingle } from './services/audioService';
 import { getStats, updateStats } from './services/storageService';
 import { multiplayerService } from './services/multiplayerService';
