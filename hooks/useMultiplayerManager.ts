@@ -9,6 +9,7 @@ interface MultiplayerManagerProps {
     virgenUrl: string | null;
     onInitDataReceived: (settings: GameSettings, bg: string | null, virgen: string | null) => void;
     onStartGameCommand: () => void;
+    onRematchCommand: () => void;
 }
 
 export const useMultiplayerManager = ({
@@ -16,7 +17,8 @@ export const useMultiplayerManager = ({
     backgroundUrl,
     virgenUrl,
     onInitDataReceived,
-    onStartGameCommand
+    onStartGameCommand,
+    onRematchCommand
 }: MultiplayerManagerProps) => {
     const [mpState, setMpState] = useState<MultiplayerState>({
         active: false,
@@ -27,6 +29,7 @@ export const useMultiplayerManager = ({
 
     const [readyStatus, setReadyStatus] = useState({ host: false, client: false });
     const [countdown, setCountdown] = useState<number | null>(null);
+    const [mpError, setMpError] = useState<string | null>(null);
 
     // --- Actions ---
 
@@ -39,11 +42,13 @@ export const useMultiplayerManager = ({
         setMpState({ active: false, role: 'none', roomId: null, status: 'disconnected' });
         setReadyStatus({ host: false, client: false });
         setCountdown(null);
+        setMpError(null);
     }, []);
 
     const setConnected = useCallback((role: 'host' | 'client', roomId: string) => {
         setMpState({ active: true, role, roomId, status: 'connected' });
         setReadyStatus({ host: false, client: false });
+        setMpError(null);
 
         // If Host, send INIT packet immediately
         if (role === 'host') {
@@ -72,14 +77,36 @@ export const useMultiplayerManager = ({
         setTimeout(send, 400);
     }, [mpState]);
 
-    const startHostCountdown = useCallback(() => {
-        if (mpState.role === 'host') {
-            multiplayerService.send({ type: 'COUNTDOWN', payload: {} });
-            setTimeout(() => {
-                setCountdown(3);
-            }, 500); 
-        }
-    }, [mpState.role]);
+    // Host Driven Countdown: Sends ticks 3, 2, 1, Start to ensure Client is perfectly synced
+    const runHostCountdown = useCallback(() => {
+        if (mpState.role !== 'host') return;
+
+        let count = 3;
+        
+        const sendTick = () => {
+            if (count > 0) {
+                setCountdown(count);
+                // Send packet with redundancy to prevent loss
+                const packet = { type: 'COUNTDOWN', payload: { value: count } } as NetworkPacket;
+                multiplayerService.send(packet);
+                // Redundant send 50ms later
+                setTimeout(() => multiplayerService.send(packet), 50);
+                
+                count--;
+                setTimeout(sendTick, 1000);
+            } else {
+                setCountdown(null);
+                onStartGameCommand();
+                // Send START with redundancy
+                const startPacket = { type: 'START_GAME', payload: {} } as NetworkPacket;
+                multiplayerService.send(startPacket);
+                setTimeout(() => multiplayerService.send(startPacket), 50);
+                setTimeout(() => multiplayerService.send(startPacket), 100);
+            }
+        };
+        
+        sendTick();
+    }, [mpState.role, onStartGameCommand]);
 
     const initiateRematch = useCallback(() => {
         if (mpState.role === 'host') {
@@ -99,6 +126,7 @@ export const useMultiplayerManager = ({
         if (!mpState.active) return;
   
         const handleData = (data: NetworkPacket) => {
+            // console.log("MP Packet:", data.type); // Debug log
             switch (data.type) {
                 case 'INIT':
                     const initPayload = data.payload as InitPacket;
@@ -117,19 +145,30 @@ export const useMultiplayerManager = ({
                     break;
                 case 'REMATCH':
                     resetForRematch();
+                    onRematchCommand();
                     break;
                 case 'COUNTDOWN':
-                    setCountdown(3);
+                    // Client: Just update display based on host's tick
+                    setCountdown(data.payload.value);
                     break;
                 case 'START_GAME':
+                    setCountdown(null);
                     onStartGameCommand();
                     break;
             }
         };
   
-        const handleError = (err: string) => console.error("MP Manager Error:", err);
+        const handleError = (err: string) => {
+             console.error("MP Manager Error:", err);
+             setMpError(err);
+        };
+
         const handleClose = () => {
             console.log("MP Connection Closed");
+            // Only show error if we thought we were connected
+            if (mpState.status === 'connected') {
+                setMpError("Connection to opponent lost.");
+            }
             setMpState({ active: false, role: 'none', roomId: null, status: 'disconnected' });
         };
   
@@ -142,7 +181,7 @@ export const useMultiplayerManager = ({
             multiplayerService.off('error', handleError);
             multiplayerService.off('close', handleClose);
         };
-    }, [mpState.active, mpState.role, readyStatus, onInitDataReceived, onStartGameCommand, resetForRematch]);
+    }, [mpState.active, mpState.role, mpState.status, readyStatus, onInitDataReceived, onStartGameCommand, resetForRematch, onRematchCommand]);
 
     // --- Heartbeat ---
     useEffect(() => {
@@ -162,33 +201,15 @@ export const useMultiplayerManager = ({
         return () => clearInterval(interval);
     }, [mpState.active, mpState.role, readyStatus]);
 
-    // --- Countdown Logic ---
-    useEffect(() => {
-        if (countdown === null) return;
-  
-        if (countdown > 0) {
-            const timer = setTimeout(() => {
-                setCountdown(prev => (prev !== null ? prev - 1 : null));
-            }, 1000);
-            return () => clearTimeout(timer);
-        } else {
-            setCountdown(null);
-            // Host Authority: Start Game
-            if (mpState.role === 'host') {
-                onStartGameCommand();
-                multiplayerService.send({ type: 'START_GAME', payload: {} });
-            }
-        }
-    }, [countdown, mpState.role, onStartGameCommand]);
-
     return {
         mpState,
         readyStatus,
         countdown,
+        mpError,
         setConnected,
         resetMultiplayer,
         signalReady,
-        startHostCountdown,
+        runHostCountdown,
         initiateRematch,
         resetForRematch
     };

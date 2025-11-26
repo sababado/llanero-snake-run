@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TRANSLATIONS } from '../constants';
 import { GameSettings, MultiplayerState } from '../types';
 import { multiplayerService } from '../services/multiplayerService';
-import { Loader2, Copy, Wifi, Users, ArrowRight, Play, Gamepad2, CheckCircle2 } from 'lucide-react';
+import { Loader2, Copy, Wifi, Users, ArrowRight, Play, Gamepad2, CheckCircle2, XCircle } from 'lucide-react';
 
 interface MultiplayerLobbyProps {
     settings: GameSettings;
@@ -100,7 +100,7 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
     // Countdown Overlay
     if (countdown !== null && countdown > 0) {
         return (
-            <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300">
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center animate-in zoom-in duration-300 bg-black/60 backdrop-blur-sm">
                 <div className="text-yellow-400 font-rye text-[120px] drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)] animate-pulse">
                     {countdown}
                 </div>
@@ -114,7 +114,7 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
     const areBothReady = readyStatus?.host && readyStatus?.client;
 
     return (
-        <div className="flex flex-col items-center gap-6 w-full max-w-md animate-in fade-in zoom-in duration-300">
+        <div className="flex flex-col items-center gap-6 w-full max-w-md animate-in fade-in zoom-in duration-300 relative z-20">
             <h2 className="font-rye text-3xl text-orange-400">{t.lobbyTitle}</h2>
             
             {view === 'menu' && (
@@ -252,7 +252,12 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                         </div>
                     )}
 
-                    <button onClick={onCancel} className="mt-2 text-center text-gray-400 hover:text-white underline">{t.cancelBtn}</button>
+                    <button 
+                        onClick={onCancel} 
+                        className="mt-4 w-full bg-red-900/50 hover:bg-red-800 border border-red-700 text-red-200 font-bold py-3 px-4 rounded flex items-center justify-center gap-2 transition-colors"
+                    >
+                        <XCircle size={18} /> {t.exitRoomBtn}
+                    </button>
                 </div>
             )}
         </div>

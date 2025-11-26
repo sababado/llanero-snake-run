@@ -77,10 +77,11 @@ const App: React.FC = () => {
       mpState,
       readyStatus,
       countdown,
+      mpError,
       setConnected,
       resetMultiplayer,
       signalReady,
-      startHostCountdown,
+      runHostCountdown,
       initiateRematch,
       resetForRematch
   } = useMultiplayerManager({
@@ -88,7 +89,11 @@ const App: React.FC = () => {
       backgroundUrl,
       virgenUrl,
       onInitDataReceived: handleMpInitData,
-      onStartGameCommand: () => startGame(2)
+      onStartGameCommand: () => startGame(2),
+      onRematchCommand: () => {
+          setWinnerText("");
+          setView('LOBBY');
+      }
   });
 
   // --- MP Logic Integration ---
@@ -222,7 +227,7 @@ const App: React.FC = () => {
                     <MultiplayerLobby 
                         settings={settings} 
                         onConnected={handleMultiplayerConnected}
-                        onStartCountdown={startHostCountdown}
+                        onStartCountdown={runHostCountdown}
                         onCancel={cancelMultiplayer}
                         readyStatus={readyStatus}
                         countdown={countdown}
@@ -259,6 +264,22 @@ const App: React.FC = () => {
                         isGeneratingAssets={isGeneratingAssets}
                     />
                 )}
+            </div>
+        )}
+
+        {/* Connection Error Modal */}
+        {mpError && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-6 animate-in fade-in">
+                <div className="bg-red-900 border-4 border-red-500 p-6 rounded-lg max-w-sm text-center shadow-2xl">
+                    <h3 className="font-rye text-2xl text-white mb-2">⚠️ Error de Conexión</h3>
+                    <p className="text-white/90 mb-6 font-mono text-sm">{mpError}</p>
+                    <button 
+                        onClick={cancelMultiplayer}
+                        className="bg-white hover:bg-gray-200 text-red-900 font-bold py-3 px-6 rounded w-full transition-colors"
+                    >
+                        Volver al Menú
+                    </button>
+                </div>
             </div>
         )}
 
