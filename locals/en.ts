@@ -67,7 +67,18 @@ export const EN = {
     lobbyYouReady: "You are Ready!",
     lobbyLoadingAssets: "Loading assets...",
     lobbyWaitHost: "Waiting for Host...",
+    lobbyVerifying: "Verifying connection...",
     rematchBtn: "Rematch",
     exitRoomBtn: "Exit Room",
-    waitHostRestart: "Waiting for Host..."
+    waitHostRestart: "Waiting for Host...",
+    triviaLabel: "💡 Did you know?",
+    trivia: [
+        "The Chigüiro (Capybara) is the world's largest rodent and loves water.",
+        "Joropo is danced with hard stomping, imitating a horse's gallop.",
+        "Mamona is veal roasted on wooden sticks over an open fire.",
+        "Casanare is the land of tough cowboys and infinite sunsets.",
+        "Yopal means 'Heart' in the indigenous language.",
+        "Coleo (Rodeo) is the main sport of the plainsman.",
+        " The Virgin of Manare is the patron saint of Casanare."
+    ]
 };

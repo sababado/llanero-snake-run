@@ -9,10 +9,12 @@ interface VirtualJoystickProps {
 
 const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, enabled }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastDirRef = useRef<Direction | null>(null);
   const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
   const [isActive, setIsActive] = useState(false);
   
   const maxDist = 40;
+  const deadZone = 10;
 
   useEffect(() => {
     if (!enabled) return;
@@ -37,6 +39,7 @@ const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, en
       e.preventDefault();
       setIsActive(false);
       setKnobPos({ x: 0, y: 0 });
+      // Don't reset lastDirRef so we don't send a stop signal (snake keeps moving)
     };
 
     const updateJoystick = (touch: Touch) => {
@@ -48,25 +51,44 @@ const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, en
         const dx = touch.clientX - centerX;
         const dy = touch.clientY - centerY;
         
-        const distance = Math.min(Math.hypot(dx, dy), maxDist);
-        
-        // Normalize direction
-        let moveX = 0;
-        let moveY = 0;
-        let dir: Direction | null = null;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+        const distance = Math.hypot(dx, dy);
 
-        if (Math.abs(dx) > Math.abs(dy)) {
-            if (dx > 0) { dir = Direction.RIGHT; moveX = distance; }
-            else { dir = Direction.LEFT; moveX = -distance; }
-        } else {
-            if (dy > 0) { dir = Direction.DOWN; moveY = distance; }
-            else { dir = Direction.UP; moveY = -distance; }
+        // Deadzone check
+        if (distance < deadZone) {
+             setKnobPos({ x: 0, y: 0 });
+             return; 
         }
 
-        setKnobPos({ x: moveX, y: moveY });
+        let newDir: Direction | null = null;
+        let visualX = 0;
+        let visualY = 0;
 
-        if (dir && distance > 10) {
-            onDirectionChange(dir);
+        // 4-WAY AXIS LOCK LOGIC
+        // Determine dominant axis and snap both Logic and Visuals to it.
+        if (absX > absY) {
+             // Horizontal Axis Dominant
+             const sign = Math.sign(dx);
+             // Snap visual knob to X axis, clamp to maxDist
+             visualX = sign * Math.min(absX, maxDist);
+             visualY = 0; 
+             newDir = dx > 0 ? Direction.RIGHT : Direction.LEFT;
+        } else {
+             // Vertical Axis Dominant
+             const sign = Math.sign(dy);
+             // Snap visual knob to Y axis, clamp to maxDist
+             visualX = 0;
+             visualY = sign * Math.min(absY, maxDist);
+             newDir = dy > 0 ? Direction.DOWN : Direction.UP;
+        }
+
+        setKnobPos({ x: visualX, y: visualY });
+
+        // Only fire event if direction actually changed
+        if (newDir && newDir !== lastDirRef.current) {
+            lastDirRef.current = newDir;
+            onDirectionChange(newDir);
         }
     };
 
@@ -86,11 +108,12 @@ const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, en
   return (
     <div 
       ref={containerRef}
-      className="md:hidden fixed bottom-12 left-1/2 -translate-x-1/2 sm:absolute sm:bottom-4 sm:left-10 sm:translate-x-0 w-[140px] h-[140px] rounded-full bg-black/40 border-2 border-white/40 touch-none z-50 backdrop-blur-sm shadow-xl"
+      className="md:hidden fixed bottom-12 left-1/2 -translate-x-1/2 sm:absolute sm:bottom-4 sm:left-10 sm:translate-x-0 w-[140px] h-[140px] rounded-full bg-black/40 border-4 border-white/20 touch-none z-50 backdrop-blur-sm shadow-2xl"
       style={{
+          // Crosshair background to indicate axes
           backgroundImage: `
-            linear-gradient(to bottom, transparent 48%, rgba(255,255,255,0.2) 48%, rgba(255,255,255,0.2) 52%, transparent 52%),
-            linear-gradient(to right, transparent 48%, rgba(255,255,255,0.2) 48%, rgba(255,255,255,0.2) 52%, transparent 52%)
+            linear-gradient(to bottom, transparent 48%, rgba(255,255,255,0.15) 48%, rgba(255,255,255,0.15) 52%, transparent 52%),
+            linear-gradient(to right, transparent 48%, rgba(255,255,255,0.15) 48%, rgba(255,255,255,0.15) 52%, transparent 52%)
           `
       }}
     >
@@ -98,9 +121,12 @@ const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, en
         className="absolute top-1/2 left-1/2 w-[60px] h-[60px] bg-yellow-400 rounded-full border-4 border-orange-700 shadow-lg pointer-events-none"
         style={{
             transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))`,
-            transition: isActive ? 'none' : 'transform 0.2s ease-out'
+            transition: isActive ? 'transform 0.05s linear' : 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
         }}
-      />
+      >
+        {/* Visual Grip Details */}
+        <div className="absolute inset-2 border-2 border-orange-500/50 rounded-full"></div>
+      </div>
     </div>
   );
 };

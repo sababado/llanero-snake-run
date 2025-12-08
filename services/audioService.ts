@@ -6,7 +6,8 @@ import {
     playBass, 
     playMaraca, 
     playSnare, 
-    playRetroBeep 
+    playRetroBeep,
+    playCrash
 } from './instrumentService';
 import { JOROPO_TRACKS, COUNTRY_PROGRESSION, RETRO_PROGRESSION, MusicTrack } from './musicData';
 
@@ -126,6 +127,11 @@ export const setMusicIntensity = (score: number) => {
 
 export const setCoffeeMode = (active: boolean) => {
     coffeeMode = active;
+}
+
+export const playCrashSound = () => {
+    if (!audioCtx || !masterGain) return;
+    playCrash(audioCtx, masterGain, audioCtx.currentTime, 0.8);
 }
 
 export const playGameOverJingle = () => {

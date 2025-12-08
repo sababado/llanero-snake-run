@@ -1,5 +1,6 @@
+
 import { GameState } from '../types';
-import { TILE_SIZE, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
+import { TILE_SIZE } from '../constants';
 import { drawRetroGame } from './retroRenderer';
 import { drawSnake, drawHUD } from './renderUtils';
 
@@ -10,8 +11,8 @@ export const drawGame = (
     time: number,
     isRetroMode: boolean
 ) => {
-    const width = LOGICAL_WIDTH;
-    const height = LOGICAL_HEIGHT;
+    const width = state.gridSize.width;
+    const height = state.gridSize.height;
     
     if (isRetroMode) {
         drawRetroGame(ctx, state, width, height, time);
@@ -83,6 +84,10 @@ const drawBackground = (
     // Base Background
     if (bgImage) {
         ctx.drawImage(bgImage, 0, 0, w, h);
+        
+        // CONTRAST OVERLAY: Darken the background image so items pop
+        ctx.fillStyle = "rgba(0, 0, 0, 0.05)"; 
+        ctx.fillRect(0, 0, w, h);
     } else {
         const grad = ctx.createLinearGradient(0, 0, 0, h);
         grad.addColorStop(0, "#4CA1AF");
@@ -129,6 +134,11 @@ const drawRain = (ctx: CanvasRenderingContext2D, w: number, h: number, time: num
 const drawChiguiro = (ctx: CanvasRenderingContext2D, x: number, y: number, name?: string) => {
     const px = x * TILE_SIZE;
     const py = y * TILE_SIZE;
+
+    // VISIBILITY GLOW: White halo to separate from background
+    ctx.shadowColor = "rgba(255, 255, 255, 0.8)";
+    ctx.shadowBlur = 12;
+
     ctx.fillStyle = "#795548"; 
     ctx.beginPath();
     ctx.roundRect(px + 2, py + 5, 16, 10, 3);
@@ -136,6 +146,10 @@ const drawChiguiro = (ctx: CanvasRenderingContext2D, x: number, y: number, name?
     ctx.beginPath();
     ctx.arc(px + 14, py + 8, 5, 0, Math.PI*2);
     ctx.fill();
+    
+    // Reset shadow for details so they stay sharp
+    ctx.shadowBlur = 0;
+
     ctx.fillStyle = "#5D4037";
     ctx.beginPath();
     ctx.arc(px + 14, py + 4, 2, 0, Math.PI*2);
@@ -146,21 +160,34 @@ const drawChiguiro = (ctx: CanvasRenderingContext2D, x: number, y: number, name?
     ctx.fill();
     
     if (name) {
-        ctx.fillStyle = "#333";
-        ctx.font = "10px Arial";
+        ctx.font = "bold 11px Arial";
         ctx.textAlign = "center";
-        ctx.fillText(name, px + TILE_SIZE/2, py - 4);
+        // Text Stroke for readability on any background
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "black";
+        ctx.strokeText(name, px + TILE_SIZE/2, py - 5);
+        
+        ctx.fillStyle = "white";
+        ctx.fillText(name, px + TILE_SIZE/2, py - 5);
     }
 };
 
 const drawAguacate = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
     const px = x * TILE_SIZE;
     const py = y * TILE_SIZE;
+    
+    // Slight Glow
+    ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+    ctx.shadowBlur = 8;
+
     ctx.fillStyle = "#2E7D32";
     ctx.beginPath();
     ctx.ellipse(px + 10, py + 12, 7, 8, 0, 0, Math.PI * 2);
     ctx.ellipse(px + 10, py + 8, 5, 6, 0, 0, Math.PI * 2);
     ctx.fill();
+    
+    ctx.shadowBlur = 0;
+
     ctx.fillStyle = "#AED581";
     ctx.beginPath();
     ctx.ellipse(px + 10, py + 12, 5, 6, 0, 0, Math.PI * 2);
@@ -175,6 +202,9 @@ const drawCafe = (ctx: CanvasRenderingContext2D, x: number, y: number, time: num
     const px = x * TILE_SIZE;
     const py = y * TILE_SIZE;
     
+    ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+    ctx.shadowBlur = 8;
+
     // Cup Body
     ctx.fillStyle = "#3E2723"; // Dark Brown
     ctx.beginPath();
@@ -184,6 +214,8 @@ const drawCafe = (ctx: CanvasRenderingContext2D, x: number, y: number, time: num
     ctx.quadraticCurveTo(px + 4, py + 18, px + 4, py + 6);
     ctx.fill();
     
+    ctx.shadowBlur = 0;
+
     // Handle
     ctx.strokeStyle = "#3E2723";
     ctx.lineWidth = 2;
@@ -198,7 +230,7 @@ const drawCafe = (ctx: CanvasRenderingContext2D, x: number, y: number, time: num
     ctx.fill();
     
     // Steam
-    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.lineWidth = 1;
     const steamOffset = Math.sin(time * 0.01) * 2;
     

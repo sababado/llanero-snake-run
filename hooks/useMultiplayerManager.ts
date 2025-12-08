@@ -1,24 +1,28 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MultiplayerState, GameSettings, NetworkPacket, InitPacket, ReadyPacket, AppView } from '../types';
+import { MultiplayerState, GameSettings, NetworkPacket, InitPacket, ReadyPacket, StartGamePacket, AppView } from '../types';
 import { multiplayerService } from '../services/multiplayerService';
+import { TILE_SIZE } from '../constants';
 
 interface MultiplayerManagerProps {
     settings: GameSettings;
     backgroundUrl: string | null;
     virgenUrl: string | null;
+    localDimensions: { width: number; height: number };
     onInitDataReceived: (settings: GameSettings, bg: string | null, virgen: string | null) => void;
-    onStartGameCommand: () => void;
+    onStartGameCommand: (gridSize: { width: number; height: number }) => void;
     onRematchCommand: () => void;
+    onSettingsUpdated?: (newSettings: GameSettings) => void;
 }
 
 export const useMultiplayerManager = ({
     settings,
     backgroundUrl,
     virgenUrl,
+    localDimensions,
     onInitDataReceived,
     onStartGameCommand,
-    onRematchCommand
+    onRematchCommand,
+    onSettingsUpdated
 }: MultiplayerManagerProps) => {
     const [mpState, setMpState] = useState<MultiplayerState>({
         active: false,
@@ -30,12 +34,14 @@ export const useMultiplayerManager = ({
     const [readyStatus, setReadyStatus] = useState({ host: false, client: false });
     const [countdown, setCountdown] = useState<number | null>(null);
     const [mpError, setMpError] = useState<string | null>(null);
+    const [waitingForAck, setWaitingForAck] = useState(false);
+    
+    // Store peer dimensions for negotiation
+    const peerDimensionsRef = useRef<{ width: number; height: number } | null>(null);
+    // Ref for handshake interval
+    const handshakeIntervalRef = useRef<any>(null);
 
     // --- Actions ---
-
-    const connectAsHost = useCallback(() => {
-        // Logic handled in Lobby UI mostly, but state update here
-    }, []);
 
     const resetMultiplayer = useCallback(() => {
         multiplayerService.close();
@@ -43,6 +49,9 @@ export const useMultiplayerManager = ({
         setReadyStatus({ host: false, client: false });
         setCountdown(null);
         setMpError(null);
+        setWaitingForAck(false);
+        peerDimensionsRef.current = null;
+        if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
     }, []);
 
     const setConnected = useCallback((role: 'host' | 'client', roomId: string) => {
@@ -62,43 +71,69 @@ export const useMultiplayerManager = ({
         }
     }, [settings, backgroundUrl, virgenUrl]);
 
+    const broadcastSettings = useCallback((newSettings: GameSettings) => {
+        if (mpState.active && mpState.role === 'host') {
+            multiplayerService.send({ type: 'SETTINGS_UPDATE', payload: newSettings });
+        }
+    }, [mpState]);
+
     const signalReady = useCallback(() => {
         if (!mpState.active || mpState.role === 'none') return;
         
         // Optimistic local update
         setReadyStatus(prev => ({ ...prev, [mpState.role]: true }));
         
-        // Spam ready packet a few times to ensure delivery
+        // Send dimensions with ready packet
         const role = mpState.role;
-        const send = () => multiplayerService.send({ type: 'READY', payload: { role } as ReadyPacket });
+        const send = () => multiplayerService.send({ 
+            type: 'READY', 
+            payload: { role, dimensions: localDimensions } as ReadyPacket 
+        });
         send();
         setTimeout(send, 100);
         setTimeout(send, 200);
         setTimeout(send, 400);
-    }, [mpState]);
+    }, [mpState, localDimensions]);
 
-    // Host Driven Countdown: Sends ticks 3, 2, 1, Start to ensure Client is perfectly synced
-    const runHostCountdown = useCallback(() => {
-        if (mpState.role !== 'host') return;
-
-        let count = 3;
+    const negotiateGridSize = useCallback(() => {
+        if (!peerDimensionsRef.current) return localDimensions;
         
+        // Determine shared grid dimensions: intersection of both screens
+        // Snap to TILE_SIZE to ensure grid alignment
+        const minWidth = Math.min(localDimensions.width, peerDimensionsRef.current.width);
+        const minHeight = Math.min(localDimensions.height, peerDimensionsRef.current.height);
+        
+        return {
+            width: Math.floor(minWidth / TILE_SIZE) * TILE_SIZE,
+            height: Math.floor(minHeight / TILE_SIZE) * TILE_SIZE
+        };
+    }, [localDimensions]);
+
+    // Internal function to execute the actual countdown sequence
+    const executeCountdownSequence = useCallback(() => {
+        let count = 3;
         const sendTick = () => {
             if (count > 0) {
                 setCountdown(count);
-                // Send packet with redundancy to prevent loss
                 const packet = { type: 'COUNTDOWN', payload: { value: count } } as NetworkPacket;
                 multiplayerService.send(packet);
-                // Redundant send 50ms later
-                setTimeout(() => multiplayerService.send(packet), 50);
+                setTimeout(() => multiplayerService.send(packet), 50); // Redundancy
                 
                 count--;
                 setTimeout(sendTick, 1000);
             } else {
                 setCountdown(null);
-                onStartGameCommand();
-                // Send START with redundancy
-                const startPacket = { type: 'START_GAME', payload: {} } as NetworkPacket;
+                
+                // Negotiate Size and Start
+                const gridSize = negotiateGridSize();
+                onStartGameCommand(gridSize);
+                
+                // Send START with negotiated grid size
+                const startPacket = { 
+                    type: 'START_GAME', 
+                    payload: { gridSize } as StartGamePacket 
+                } as NetworkPacket;
+                
                 multiplayerService.send(startPacket);
                 setTimeout(() => multiplayerService.send(startPacket), 50);
                 setTimeout(() => multiplayerService.send(startPacket), 100);
@@ -106,7 +141,32 @@ export const useMultiplayerManager = ({
         };
         
         sendTick();
-    }, [mpState.role, onStartGameCommand]);
+    }, [negotiateGridSize, onStartGameCommand]);
+
+    // Host Driven Countdown with Handshake
+    const runHostCountdown = useCallback(() => {
+        if (mpState.role !== 'host') return;
+        
+        setWaitingForAck(true);
+        
+        // Retry Logic: Send check periodically until ACK is received
+        let attempts = 0;
+        const sendCheck = () => {
+            if (attempts >= 5) {
+                if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
+                setWaitingForAck(false);
+                setMpError("Client unresponsive during start check.");
+                return;
+            }
+            multiplayerService.send({ type: 'PRE_START_CHECK', payload: {} });
+            attempts++;
+        };
+
+        sendCheck();
+        if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
+        handshakeIntervalRef.current = setInterval(sendCheck, 1000);
+
+    }, [mpState.role]);
 
     const initiateRematch = useCallback(() => {
         if (mpState.role === 'host') {
@@ -114,7 +174,6 @@ export const useMultiplayerManager = ({
         }
     }, [mpState.role]);
 
-    // --- Reset Logic (Used by App for Rematch UI reset) ---
     const resetForRematch = useCallback(() => {
         setCountdown(null);
         setReadyStatus({ host: false, client: false });
@@ -126,21 +185,43 @@ export const useMultiplayerManager = ({
         if (!mpState.active) return;
   
         const handleData = (data: NetworkPacket) => {
-            // console.log("MP Packet:", data.type); // Debug log
             switch (data.type) {
                 case 'INIT':
                     const initPayload = data.payload as InitPacket;
                     onInitDataReceived(initPayload.settings, initPayload.backgroundUrl, initPayload.virgenUrl);
+                    break;
+                case 'SETTINGS_UPDATE':
+                    if (onSettingsUpdated) onSettingsUpdated(data.payload as GameSettings);
                     break;
                 case 'READY':
                     const readyPayload = data.payload as ReadyPacket;
                     if (readyPayload.role) {
                          setReadyStatus(prev => ({ ...prev, [readyPayload.role]: true }));
                     }
+                    if (readyPayload.dimensions) {
+                        peerDimensionsRef.current = readyPayload.dimensions;
+                    }
                     break;
                 case 'PING':
                     if (mpState.role !== 'none' && readyStatus[mpState.role]) {
-                        multiplayerService.send({ type: 'READY', payload: { role: mpState.role } as ReadyPacket });
+                        multiplayerService.send({ 
+                            type: 'READY', 
+                            payload: { role: mpState.role, dimensions: localDimensions } as ReadyPacket 
+                        });
+                    }
+                    break;
+                case 'PRE_START_CHECK':
+                    // Client received check, respond with ACK immediately
+                    if (mpState.role === 'client') {
+                        multiplayerService.send({ type: 'PRE_START_ACK', payload: {} });
+                    }
+                    break;
+                case 'PRE_START_ACK':
+                    // Host received ACK, stop retrying and start actual countdown
+                    if (mpState.role === 'host') {
+                        if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
+                        setWaitingForAck(false);
+                        executeCountdownSequence();
                     }
                     break;
                 case 'REMATCH':
@@ -148,12 +229,12 @@ export const useMultiplayerManager = ({
                     onRematchCommand();
                     break;
                 case 'COUNTDOWN':
-                    // Client: Just update display based on host's tick
                     setCountdown(data.payload.value);
                     break;
                 case 'START_GAME':
                     setCountdown(null);
-                    onStartGameCommand();
+                    const startPayload = data.payload as StartGamePacket;
+                    onStartGameCommand(startPayload.gridSize);
                     break;
             }
         };
@@ -164,8 +245,6 @@ export const useMultiplayerManager = ({
         };
 
         const handleClose = () => {
-            console.log("MP Connection Closed");
-            // Only show error if we thought we were connected
             if (mpState.status === 'connected') {
                 setMpError("Connection to opponent lost.");
             }
@@ -180,8 +259,9 @@ export const useMultiplayerManager = ({
             multiplayerService.off('data', handleData);
             multiplayerService.off('error', handleError);
             multiplayerService.off('close', handleClose);
+            if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
         };
-    }, [mpState.active, mpState.role, mpState.status, readyStatus, onInitDataReceived, onStartGameCommand, resetForRematch, onRematchCommand]);
+    }, [mpState.active, mpState.role, mpState.status, readyStatus, localDimensions, onInitDataReceived, onStartGameCommand, resetForRematch, onRematchCommand, onSettingsUpdated, executeCountdownSequence]);
 
     // --- Heartbeat ---
     useEffect(() => {
@@ -190,7 +270,10 @@ export const useMultiplayerManager = ({
         const interval = setInterval(() => {
             const role = mpState.role;
             if (role !== 'none' && readyStatus[role]) {
-                 multiplayerService.send({ type: 'READY', payload: { role } as ReadyPacket });
+                 multiplayerService.send({ 
+                     type: 'READY', 
+                     payload: { role, dimensions: localDimensions } as ReadyPacket 
+                 });
             }
             const peerRole = role === 'host' ? 'client' : 'host';
             if (!readyStatus[peerRole]) {
@@ -199,7 +282,7 @@ export const useMultiplayerManager = ({
         }, 500);
   
         return () => clearInterval(interval);
-    }, [mpState.active, mpState.role, readyStatus]);
+    }, [mpState.active, mpState.role, readyStatus, localDimensions]);
 
     return {
         mpState,
@@ -211,6 +294,8 @@ export const useMultiplayerManager = ({
         signalReady,
         runHostCountdown,
         initiateRematch,
-        resetForRematch
+        resetForRematch,
+        broadcastSettings,
+        waitingForAck
     };
 };

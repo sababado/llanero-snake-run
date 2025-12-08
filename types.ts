@@ -1,5 +1,4 @@
 
-
 export enum Direction {
   UP = 'UP',
   DOWN = 'DOWN',
@@ -99,6 +98,7 @@ export interface GameState {
   sessionEatenItems: string[]; // Track items for Gastronomy Gallery
   weather: WeatherState;
   rainIntensity: number; // 0 to 1
+  gridSize: { width: number; height: number }; // Dynamic Grid Size
 }
 
 export interface LeaderboardEntry {
@@ -127,7 +127,7 @@ export interface MultiplayerState {
 }
 
 export interface NetworkPacket {
-  type: 'INIT' | 'UPDATE' | 'INPUT' | 'GAME_OVER' | 'COUNTDOWN' | 'READY' | 'PING' | 'REMATCH' | 'START_GAME';
+  type: 'INIT' | 'UPDATE' | 'INPUT' | 'GAME_OVER' | 'COUNTDOWN' | 'READY' | 'PING' | 'REMATCH' | 'START_GAME' | 'SETTINGS_UPDATE' | 'PRE_START_CHECK' | 'PRE_START_ACK';
   payload: any;
 }
 
@@ -139,6 +139,11 @@ export interface InitPacket {
 
 export interface ReadyPacket {
   role: 'host' | 'client';
+  dimensions: { width: number; height: number };
+}
+
+export interface StartGamePacket {
+    gridSize: { width: number; height: number };
 }
 
 export interface UpdatePacket {
@@ -155,6 +160,7 @@ export interface UpdatePacket {
   winnerMsg: string;
   isRunning: boolean;
   gameMode: 1 | 2;
+  gridSize: { width: number; height: number };
 }
 
 export interface InputPacket {
@@ -162,14 +168,14 @@ export interface InputPacket {
 }
 
 // --- Game Events (For Clean Architecture) ---
-// These events decouple the Game Logic from the UI/Audio implementation.
 
 export type GameEventType = 
   | 'SCORE_UPDATE' 
   | 'GAME_OVER' 
   | 'NARRATION' 
   | 'PLAY_SOUND'
-  | 'MUSIC_INTENSITY';
+  | 'MUSIC_INTENSITY'
+  | 'COLLISION_IMPACT';
 
 export interface GameEvent {
   type: GameEventType;
@@ -194,4 +200,9 @@ export interface NarrationPayload {
   type: 'start' | 'milestone' | 'game_over' | 'relic' | 'powerup';
   text?: string; // Optional direct text override
   context?: any;
+}
+
+export interface CollisionPayload {
+    x: number;
+    y: number;
 }

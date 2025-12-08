@@ -1,12 +1,12 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { GameSettings, Snake, Direction, GameState, MultiplayerState, NetworkPacket, UpdatePacket, GameEvent, NarrationPayload } from '../types';
-import { SPEEDS, LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../constants';
+import { GameSettings, Snake, Direction, GameState, MultiplayerState, NetworkPacket, UpdatePacket, GameEvent, NarrationPayload, CollisionPayload } from '../types';
+import { SPEEDS } from '../constants';
 import VirtualJoystick from './VirtualJoystick';
 import { generateNarratorCommentary } from '../services/ai/narrator';
-import { setMusicIntensity, setCoffeeMode } from '../services/audioService';
+import { setMusicIntensity, setCoffeeMode, playCrashSound } from '../services/audioService';
 import { drawGame } from '../game/renderer';
-import { updateGame } from '../game/logic';
+import { updateGame, spawnParticles } from '../game/logic';
 import { createInitialState } from '../game/initialization';
 import { multiplayerService } from '../services/multiplayerService';
 import { useGameInput } from '../hooks/useGameInput';
@@ -26,6 +26,7 @@ interface GameCanvasProps {
   mpState: MultiplayerState;
   onMpInitData: (settings: GameSettings, bg: string | null, virgen: string | null) => void;
   onAssetsLoaded?: () => void;
+  initialGridSize: { width: number; height: number } | null;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -39,7 +40,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   onShowCommentary,
   onSessionItemsUpdate,
   mpState,
-  onAssetsLoaded
+  onAssetsLoaded,
+  initialGridSize
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasStyle, setCanvasStyle] = useState<React.CSSProperties>({ width: '100%', height: 'auto' });
@@ -58,7 +60,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   const remoteInputRef = useRef<Direction | null>(null);
 
   // Game State Ref (Initialized via Factory)
-  const stateRef = useRef<GameState>(createInitialState(1, null, false));
+  const stateRef = useRef<GameState>(createInitialState(1, null, false, 800, 800));
 
   const setDirection = useCallback((snake: Snake, dir: Direction) => {
       if (snake.dead) return;
@@ -91,14 +93,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                   if (narration.text) {
                       onShowCommentary(narration.text);
                   } else {
-                      generateNarratorCommentary(narration.type, narration.context).then(msg => {
+                      generateNarratorCommentary(narration.type, settings.language, narration.context).then(msg => {
                           if (stateRef.current.isRunning) onShowCommentary(msg);
                       });
                   }
                   break;
+              case 'COLLISION_IMPACT':
+                  const collision = event.payload as CollisionPayload;
+                  if (settings.musicEnabled) playCrashSound();
+                  spawnParticles(stateRef.current, collision.x, collision.y, '#FFFFFF', 20);
+                  spawnParticles(stateRef.current, collision.x, collision.y, '#FF0000', 10);
+                  break;
           }
       });
-  }, [onScoreUpdate, onGameOver, onSessionItemsUpdate, onShowCommentary, mpState]);
+  }, [onScoreUpdate, onGameOver, onSessionItemsUpdate, onShowCommentary, mpState, settings.musicEnabled, settings.language]);
 
   // --- Network Sync ---
   
@@ -117,7 +125,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
           weather: update.weather,
           rainIntensity: update.rainIntensity,
           isRunning: update.isRunning,
-          gameMode: update.gameMode 
+          gameMode: update.gameMode,
+          gridSize: update.gridSize || currentState.gridSize // Sync dimensions if provided
       };
       onScoreUpdate(update.snake1.score, update.snake2.score);
   }, [onScoreUpdate]);
@@ -216,11 +225,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // --- Init ---
   const initGame = useCallback(() => {
+    // Use negotiated size for MP, or passed initial size for local
+    const width = initialGridSize?.width || 800;
+    const height = initialGridSize?.height || 800;
+
     // Factory Call
     stateRef.current = createInitialState(
         gameMode, 
         stateRef.current.backgroundUrl, 
-        mpState.active && mpState.role === 'client'
+        mpState.active && mpState.role === 'client',
+        width,
+        height
     );
     
     // Reset side effects
@@ -229,11 +244,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     setCoffeeMode(false);
 
     if (stateRef.current.isRunning) {
-        generateNarratorCommentary('start').then(msg => {
+        generateNarratorCommentary('start', settings.language).then(msg => {
             if(stateRef.current.isRunning) onShowCommentary(msg);
         });
     }
-  }, [gameMode, onScoreUpdate, onShowCommentary, mpState]);
+  }, [gameMode, onScoreUpdate, onShowCommentary, mpState, initialGridSize, settings.language]);
 
   // --- Game Loop ---
   const gameLoop = useCallback((time: number) => {
@@ -298,7 +313,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                     weather: stateRef.current.weather,
                     rainIntensity: stateRef.current.rainIntensity,
                     isRunning: stateRef.current.isRunning,
-                    gameMode: stateRef.current.gameMode
+                    gameMode: stateRef.current.gameMode,
+                    gridSize: stateRef.current.gridSize // Sync Grid Size
                  } as UpdatePacket
              };
              multiplayerService.send(packet);
@@ -328,10 +344,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const updateVisuals = (time: number) => {
       const state = stateRef.current;
+      const { width } = state.gridSize;
+      
       state.clouds.forEach(c => {
           c.x += c.speed;
           c.y = c.baseY + Math.sin(time * 0.001 + c.wobbleOffset) * 5; 
-          if (c.x > LOGICAL_WIDTH) c.x = -c.size * 2;
+          if (c.x > width) c.x = -c.size * 2;
       });
       state.particles.forEach(p => {
           p.x += p.vx; p.y += p.vy; p.life -= 0.03; p.vy += 0.15;
@@ -339,28 +357,40 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       state.particles = state.particles.filter(p => p.life > 0);
   };
 
-  // --- Responsive Resize ---
+  // --- Responsive Resize (Dynamic Scaling) ---
   useEffect(() => {
       const resize = () => {
           const container = canvasRef.current?.parentElement;
-          if (container) {
+          if (container && stateRef.current.gridSize) {
+              const gridW = stateRef.current.gridSize.width;
+              const gridH = stateRef.current.gridSize.height;
+              
               const availW = container.clientWidth;
               const availH = window.innerHeight - 120; 
-              const scale = Math.min(availW / LOGICAL_WIDTH, availH / LOGICAL_HEIGHT);
-              setCanvasStyle({ width: `${LOGICAL_WIDTH * scale}px`, height: `${LOGICAL_HEIGHT * scale}px`, imageRendering: settings.retroMode ? 'pixelated' : 'auto' });
+              
+              const scale = Math.min(availW / gridW, availH / gridH);
+              
+              setCanvasStyle({ 
+                  width: `${gridW * scale}px`, 
+                  height: `${gridH * scale}px`, 
+                  imageRendering: settings.retroMode ? 'pixelated' : 'auto' 
+              });
           }
       };
       window.addEventListener('resize', resize);
       resize();
       return () => window.removeEventListener('resize', resize);
-  }, [settings.retroMode]);
+  }, [settings.retroMode, isPlaying]); // Re-run when game starts to get grid size
+
+  const gridSizeW = stateRef.current.gridSize?.width || 800;
+  const gridSizeH = stateRef.current.gridSize?.height || 800;
 
   return (
     <>
         <canvas 
             ref={canvasRef} 
-            width={LOGICAL_WIDTH}
-            height={LOGICAL_HEIGHT}
+            width={gridSizeW}
+            height={gridSizeH}
             style={canvasStyle}
             className={`mx-auto border-b-4 border-[#5D4037] touch-none ${settings.retroMode ? 'bg-[#99A906]' : 'bg-[#81C784]'}`} 
         />

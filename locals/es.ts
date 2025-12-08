@@ -29,7 +29,7 @@ export const ES = {
     gameOver: "JUEGO TERMINADO",
     tie: "¡Choque Doble! ¡Empate!",
     winP1: "¡Ganó El Llanero (Esposo)!",
-    winP2: "¡Ganó La Llanera (Wife)!",
+    winP2: "¡Ganó La Llanera (Esposa)!",
     win1P: "¡Puntaje: {score}! ¡Buen trabajo!",
     p1Label: "Esposo (P1)",
     p2Label: "Esposa (P2)",
@@ -67,7 +67,18 @@ export const ES = {
     lobbyYouReady: "¡Estás Listo!",
     lobbyLoadingAssets: "Cargando archivos...",
     lobbyWaitHost: "Esperando al Host...",
+    lobbyVerifying: "Verificando conexión...",
     rematchBtn: "Revancha",
     exitRoomBtn: "Salir de Sala",
-    waitHostRestart: "Esperando reinicio..."
+    waitHostRestart: "Esperando reinicio...",
+    triviaLabel: "💡 ¿Sabías que?",
+    trivia: [
+        "El chigüiro es el roedor más grande del mundo y ama el agua.",
+        "El Joropo se baila zapateando duro, imitando el galope del caballo.",
+        "La Mamona es carne de ternera asada en varas de madera.",
+        "El Casanare es tierra de llaneros recios y atardeceres infinitos.",
+        "Yopal significa 'Corazón' en lengua indígena.",
+        "El coleo es el deporte principal del hombre llanero.",
+        "La Virgen de Manare es la patrona de todos los casanareños."
+    ]
 };

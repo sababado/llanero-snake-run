@@ -8,7 +8,7 @@ import { EN } from "./locals/en";
 // Y (Minor): New features or substantial enhancements.
 // Z (Deploy): Bug fixes, minor tweaks, or deployment-specific changes.
 // A (AI Gen): Incremented automatically with each AI-powered code modification.
-export const APP_VERSION = '0.3.3.22';
+export const APP_VERSION = '0.4.1.7';
 
 export const SPEEDS: Record<Difficulty, number> = {
   easy: 150,
@@ -16,11 +16,7 @@ export const SPEEDS: Record<Difficulty, number> = {
   hard: 60,
 };
 
-export const TILE_SIZE = 20;
-// Fixed Logical Resolution for Cross-Platform Sync
-// Changed to 1:1 (Square) to improve mobile vertical real estate while maintaining desktop compatibility
-export const LOGICAL_WIDTH = 800;
-export const LOGICAL_HEIGHT = 800;
+export const TILE_SIZE = 18;
 
 export const MAX_IMMUNITY = 200; // Increased duration for Coffee Power-up (~10s on Medium)
 
@@ -45,6 +41,6 @@ export const INITIAL_SETTINGS: any = {
     musicEnabled: true,
     musicStyle: 'joropo',
     narratorAudioEnabled: true,
-    narratorTextEnabled: true,
+    narratorTextEnabled: false,
     retroMode: false
 };

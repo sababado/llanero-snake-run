@@ -231,3 +231,28 @@ export const playSnare = (ctx: AudioContext, destination: AudioNode, time: numbe
     oscBody.start(time);
     oscBody.stop(time + 0.1);
 };
+
+export const playCrash = (ctx: AudioContext, destination: AudioNode, time: number, vol: number) => {
+    const bufferSize = ctx.sampleRate * 0.3; 
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(3000, time);
+    filter.frequency.exponentialRampToValueAtTime(100, time + 0.3);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.25);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(destination);
+    noise.start(time);
+}

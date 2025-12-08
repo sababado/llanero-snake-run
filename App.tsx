@@ -1,7 +1,7 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { GameSettings, GameStats, AppView } from './types';
-import { TRANSLATIONS, INITIAL_SETTINGS, APP_VERSION } from './constants';
+import { TRANSLATIONS, INITIAL_SETTINGS, APP_VERSION, TILE_SIZE } from './constants';
 import GameCanvas from './components/GameCanvas';
 import { generateNarratorCommentary, speakLlaneroText } from './services/ai/narrator';
 import { initAudio, startMusic, stopMusic, playGameOverJingle } from './services/audioService';
@@ -36,6 +36,9 @@ const App: React.FC = () => {
   const [stats, setStats] = useState<GameStats>({ highScore: 0, totalGames: 0, totalChiguiros: 0, totalScore: 0, leaderboard: [] });
   const [sessionItems, setSessionItems] = useState<string[]>([]);
   const [commentary, setCommentary] = useState<{text: string, visible: boolean}>({text: '', visible: false});
+  
+  // Grid Dimensions
+  const [initialGridSize, setInitialGridSize] = useState<{width: number, height: number} | null>(null);
 
   // Assets
   const { backgroundUrl, setBackgroundUrl, virgenUrl, setVirgenUrl, isGeneratingAssets } = useGameAssets();
@@ -43,6 +46,48 @@ const App: React.FC = () => {
   useEffect(() => {
     setStats(getStats());
   }, []);
+
+  // Calculate Local Dimensions
+  const localDimensions = useMemo(() => {
+      // Reserve space for UI and Joystick if needed
+      const headerHeight = 100; // Approx header space
+      const joystickHeight = settings.useJoystick ? 160 : 20; 
+      
+      const isMobile = window.innerWidth < 768;
+
+      let availableWidth = window.innerWidth - 20;
+      let availableHeight = window.innerHeight - headerHeight - joystickHeight;
+      
+      // LOGICAL SCALING STRATEGY:
+      // Mobile: Multiply dimensions by 1.4 to create a larger logical grid (zoomed out effect).
+      // Desktop: Cap dimensions to 800px max to maintain high fidelity/density.
+
+      if (isMobile) {
+          availableWidth *= 1.4;
+          availableHeight *= 1.4;
+      } else {
+          // Desktop Constraint:
+          // Enforce a max size of 800x800 for the "Classic" feel.
+          const maxDimension = 800;
+          
+          if (availableWidth > availableHeight) {
+              // Landscape: Square aspect ratio, max 800
+              const size = Math.min(availableHeight, maxDimension);
+              availableWidth = size;
+              availableHeight = size;
+          } else {
+              // Portrait Desktop: Clamp both
+              availableWidth = Math.min(availableWidth, maxDimension);
+              availableHeight = Math.min(availableHeight, maxDimension);
+          }
+      }
+
+      // Snap to tile size
+      return {
+          width: Math.floor(availableWidth / TILE_SIZE) * TILE_SIZE,
+          height: Math.floor(availableHeight / TILE_SIZE) * TILE_SIZE
+      };
+  }, [settings.useJoystick]);
 
   // Music Control
   useEffect(() => {
@@ -55,22 +100,30 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
-  const startGame = useCallback((mode: 1 | 2) => {
+  const startGame = useCallback((mode: 1 | 2, gridSize?: {width: number, height: number}) => {
     initAudio();
     setGameMode(mode);
     setScores({ p1: 0, p2: 0 });
     setSessionItems([]);
+    
+    // Use negotiated size for MP, or local calculation for SP
+    setInitialGridSize(gridSize || localDimensions);
+    
     setView('GAME');
     setNarratorMessage("");
     setIsLoadingCommentary(false);
     setCommentary({ text: '', visible: false });
-  }, []);
+  }, [localDimensions]);
 
   const handleMpInitData = useCallback((newSettings: GameSettings, bg: string | null, virgen: string | null) => {
       if (bg !== backgroundUrl) setBackgroundUrl(bg);
       if (virgen !== virgenUrl) setVirgenUrl(virgen);
       setSettings(newSettings);
   }, [backgroundUrl, setBackgroundUrl, virgenUrl, setVirgenUrl]);
+
+  const handleMpSettingsUpdate = useCallback((newSettings: GameSettings) => {
+      setSettings(newSettings);
+  }, []);
 
   // --- Multiplayer Manager Hook ---
   const {
@@ -83,17 +136,21 @@ const App: React.FC = () => {
       signalReady,
       runHostCountdown,
       initiateRematch,
-      resetForRematch
+      resetForRematch,
+      broadcastSettings,
+      waitingForAck
   } = useMultiplayerManager({
       settings,
       backgroundUrl,
       virgenUrl,
+      localDimensions,
       onInitDataReceived: handleMpInitData,
-      onStartGameCommand: () => startGame(2),
+      onStartGameCommand: (gridSize) => startGame(2, gridSize),
       onRematchCommand: () => {
           setWinnerText("");
           setView('LOBBY');
-      }
+      },
+      onSettingsUpdated: handleMpSettingsUpdate
   });
 
   // --- MP Logic Integration ---
@@ -104,7 +161,6 @@ const App: React.FC = () => {
       setView('LOBBY');
   };
 
-  // Check if we need to signal ready (when in Lobby with assets loaded)
   useEffect(() => {
       if (view === 'LOBBY' && mpState.active && mpState.role !== 'none' && !readyStatus[mpState.role]) {
           if (backgroundUrl || settings.retroMode) {
@@ -150,13 +206,13 @@ const App: React.FC = () => {
 
       setIsLoadingCommentary(true);
       setNarratorMessage("");
-      generateNarratorCommentary('game_over', context).then(text => {
+      generateNarratorCommentary('game_over', settings.language, context).then(text => {
           setNarratorMessage(text);
           setIsLoadingCommentary(false);
-          if (settings.narratorAudioEnabled) speakLlaneroText(text);
+          if (settings.narratorAudioEnabled) speakLlaneroText(text, settings.language);
       }).catch(() => setIsLoadingCommentary(false));
 
-  }, [settings.narratorAudioEnabled, settings.musicEnabled]);
+  }, [settings.narratorAudioEnabled, settings.musicEnabled, settings.language]);
 
   const handleScoreUpdate = useCallback((s1: number, s2: number) => {
       setScores({ p1: s1, p2: s2 });
@@ -167,11 +223,17 @@ const App: React.FC = () => {
           setCommentary({ text, visible: true });
           setTimeout(() => setCommentary(prev => (prev.text === text ? { ...prev, visible: false } : prev)), 4000);
       }
-      if (settings.narratorAudioEnabled) speakLlaneroText(text);
-  }, [settings.narratorAudioEnabled, settings.narratorTextEnabled]);
+      if (settings.narratorAudioEnabled) speakLlaneroText(text, settings.language);
+  }, [settings.narratorAudioEnabled, settings.narratorTextEnabled, settings.language]);
 
   const updateSetting = (key: keyof GameSettings, value: any) => {
-      setSettings(prev => ({ ...prev, [key]: value }));
+      setSettings(prev => {
+          const updated = { ...prev, [key]: value };
+          if (mpState.active && mpState.role === 'host' && view === 'LOBBY') {
+              broadcastSettings(updated);
+          }
+          return updated;
+      });
   };
 
   return (
@@ -218,6 +280,7 @@ const App: React.FC = () => {
             mpState={mpState}
             onMpInitData={handleMpInitData}
             onAssetsLoaded={signalReady}
+            initialGridSize={initialGridSize}
         />
 
         {/* Overlays */}
@@ -226,12 +289,14 @@ const App: React.FC = () => {
                 {view === 'LOBBY' && (
                     <MultiplayerLobby 
                         settings={settings} 
+                        updateSetting={updateSetting}
                         onConnected={handleMultiplayerConnected}
                         onStartCountdown={runHostCountdown}
                         onCancel={cancelMultiplayer}
                         readyStatus={readyStatus}
                         countdown={countdown}
                         mpState={mpState}
+                        waitingForAck={waitingForAck}
                     />
                 )}
                 {view === 'GAME_OVER' && (
@@ -241,7 +306,7 @@ const App: React.FC = () => {
                         isLoadingCommentary={isLoadingCommentary}
                         duelStats={duelStats}
                         settings={settings}
-                        startGame={startGame}
+                        startGame={(mode) => startGame(mode)}
                         updateSetting={updateSetting}
                         setShowStats={setShowStats}
                         setShowSettings={setShowSettings}
@@ -255,7 +320,7 @@ const App: React.FC = () => {
                 )}
                 {view === 'MENU' && (
                     <MainMenu 
-                        startGame={startGame}
+                        startGame={(mode) => startGame(mode)}
                         startMultiplayerSetup={() => setView('LOBBY')}
                         settings={settings}
                         updateSetting={updateSetting}
