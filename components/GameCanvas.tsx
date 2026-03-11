@@ -167,8 +167,11 @@ const GameCanvas: React.FC<GameCanvasProps> = React.memo(({
           cafe: update.cafe,
           bomb: update.bomb,
           bola: update.bola,
+          boss: update.boss,
           weather: update.weather,
+          season: update.season,
           rainIntensity: update.rainIntensity,
+          winnerMsg: update.winnerMsg,
           isRunning: update.isRunning,
           gameMode: update.gameMode,
           gridSize: update.gridSize || currentState.gridSize // Sync dimensions if provided
@@ -363,8 +366,11 @@ const GameCanvas: React.FC<GameCanvasProps> = React.memo(({
                     cafe: stateRef.current.cafe,
                     bomb: stateRef.current.bomb,
                     bola: stateRef.current.bola,
+                    boss: stateRef.current.boss,
                     weather: stateRef.current.weather,
+                    season: stateRef.current.season,
                     rainIntensity: stateRef.current.rainIntensity,
+                    winnerMsg: stateRef.current.winnerMsg,
                     isRunning: stateRef.current.isRunning,
                     gameMode: stateRef.current.gameMode,
                     gridSize: stateRef.current.gridSize // Sync Grid Size

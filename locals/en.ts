@@ -20,6 +20,7 @@ export const EN = {
     retroLabel: "Nokia 1100 Mode (Retro)",
     narratorAudioLabel: "Narrator Voice (AI)",
     narratorTextLabel: "Text Messages",
+    mythicalBossesLabel: "Enable Mythical Bosses (El Silbón, etc.)",
     diffLabel: "Difficulty:",
     optEasy: "Easy (Slow)",
     optMedium: "Medium",

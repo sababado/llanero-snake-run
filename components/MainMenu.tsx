@@ -2,7 +2,7 @@
 import React from 'react';
 import { GameSettings, Language, Difficulty } from '../types';
 import { TRANSLATIONS, APP_VERSION } from '../constants';
-import { Settings, Repeat, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Sparkles, BarChart3, Globe } from 'lucide-react';
+import { Settings, Repeat, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Sparkles, BarChart3, Globe, BookOpen } from 'lucide-react';
 
 interface MainMenuProps {
     startGame: (mode: 1 | 2) => void;
@@ -11,6 +11,7 @@ interface MainMenuProps {
     updateSetting: (key: keyof GameSettings, value: any) => void;
     setShowStats: (show: boolean) => void;
     setShowSettings: (show: boolean) => void;
+    setShowBestiary: (show: boolean) => void;
     isGeneratingAssets: boolean;
 }
 
@@ -21,6 +22,7 @@ const MainMenu: React.FC<MainMenuProps> = React.memo(({
     updateSetting, 
     setShowStats, 
     setShowSettings,
+    setShowBestiary,
     isGeneratingAssets 
 }) => {
     const t = TRANSLATIONS[settings.language];
@@ -78,6 +80,12 @@ const MainMenu: React.FC<MainMenuProps> = React.memo(({
                     className="flex items-center gap-2 bg-cyan-700 hover:bg-cyan-600 px-4 py-2 rounded border-2 border-cyan-400 text-sm"
                  >
                     <BarChart3 size={16} /> Stats
+                 </button>
+                 <button 
+                    onClick={() => setShowBestiary(true)}
+                    className="flex items-center gap-2 bg-[#8b5a2b] hover:bg-[#a06b35] text-[#f4ecd8] px-4 py-2 rounded border-2 border-[#d2b48c] text-sm"
+                 >
+                    <BookOpen size={16} /> Álbum
                  </button>
                  <button 
                     onClick={() => setShowSettings(true)}

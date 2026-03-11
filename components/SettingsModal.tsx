@@ -4,7 +4,7 @@
 import React from 'react';
 import { GameSettings, Language, Difficulty, MusicStyle } from '../types';
 import { TRANSLATIONS, APP_VERSION } from '../constants';
-import { Music, Mic, Smartphone, MessageSquare } from 'lucide-react';
+import { Music, Mic, Smartphone, MessageSquare, Ghost } from 'lucide-react';
 
 interface SettingsModalProps {
     settings: GameSettings;
@@ -96,6 +96,19 @@ const SettingsModal: React.FC<SettingsModalProps> = React.memo(({ settings, upda
                     />
                     <label htmlFor="retro" className="cursor-pointer select-none flex items-center gap-2 text-green-300">
                         <Smartphone size={16} /> {t.retroLabel}
+                    </label>
+                </div>
+
+                <div className="flex items-center gap-3 bg-gray-800/50 p-3 rounded border border-purple-800">
+                    <input 
+                        type="checkbox" 
+                        id="mythical"
+                        checked={settings.mythicalBossesEnabled}
+                        onChange={(e) => updateSetting('mythicalBossesEnabled', e.target.checked)}
+                        className="w-5 h-5 accent-purple-500"
+                    />
+                    <label htmlFor="mythical" className="cursor-pointer select-none flex items-center gap-2 text-purple-300">
+                        <Ghost size={16} /> {t.mythicalBossesLabel}
                     </label>
                 </div>
 

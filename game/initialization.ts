@@ -21,6 +21,7 @@ export const createInitialState = (
         cafe: { active: false, x: 0, y: 0, timer: 0 },
         bomb: { active: false, x: 0, y: 0, timer: 0 },
         bola: { active: false, x: 0, y: 0, moveTimer: 0 },
+        boss: { active: false, type: 'none', x: 0, y: 0, timer: 0, warningTimer: 0, dx: 0, dy: 0, moveTimer: 0 },
         clouds: [],
         particles: [],
         gameMode: gameMode,
@@ -32,6 +33,7 @@ export const createInitialState = (
         lastMilestone: 0,
         sessionEatenItems: [],
         weather: 'sunny',
+        season: 'verano',
         rainIntensity: 0,
         gridSize: { width, height }
     };

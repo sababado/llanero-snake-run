@@ -176,20 +176,6 @@ export const generateNarratorCommentary = async (
   }
 };
 
-export const generateFoodFact = async (foodName: string): Promise<string> => {
-    if (isRateLimited()) return `${foodName} es un plato típico delicioso del Llano.`;
-    
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `You are a local guide from Yopal. Describe the Colombian food "${foodName}" in 1 short, fun sentence for a tourist. Mention why it's special in Casanare.`
-        });
-        return response.text?.trim() || `${foodName} es muy sabroso.`;
-    } catch (error) {
-        return `${foodName} es un clásico del Llano.`;
-    }
-}
-
 // --- Audio / TTS Generation ---
 
 function decode(base64: string) {

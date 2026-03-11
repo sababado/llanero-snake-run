@@ -54,6 +54,7 @@ const drawModernGame = (
     if (state.cafe.active) drawCafe(ctx, state.cafe.x, state.cafe.y, time);
     if (state.bola.active) drawBolaDeFuego(ctx, state.bola.x, state.bola.y);
     if (state.bomb.active) drawBomb(ctx, state.bomb.x, state.bomb.y);
+    if (state.boss.active || state.boss.warningTimer > 0) drawMythicalBoss(ctx, state.boss, time, width, height);
 
     // Draw Particles
     state.particles.forEach(p => {
@@ -97,6 +98,15 @@ const drawBackground = (
         grad.addColorStop(0, "#4CA1AF");
         grad.addColorStop(1, "#C4E0E5");
         ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    // Season Overlays
+    if (state.season === 'verano') {
+        ctx.fillStyle = "rgba(255, 200, 0, 0.1)"; // Slight yellow/dry tint
+        ctx.fillRect(0, 0, w, h);
+    } else if (state.season === 'invierno') {
+        ctx.fillStyle = "rgba(0, 100, 200, 0.1)"; // Slight blue/wet tint
         ctx.fillRect(0, 0, w, h);
     }
 
@@ -339,4 +349,166 @@ const drawBolaDeFuego = (ctx: CanvasRenderingContext2D, x: number, y: number) =>
     ctx.beginPath();
     ctx.arc(px + 10, py + 10, 4, 0, Math.PI * 2);
     ctx.fill();
+};
+
+const drawMythicalBoss = (ctx: CanvasRenderingContext2D, boss: any, time: number, width: number, height: number) => {
+    if (boss.warningTimer > 0) {
+        // Warning phase
+        ctx.fillStyle = `rgba(255, 0, 0, ${Math.abs(Math.sin(time / 100)) * 0.3})`;
+        ctx.fillRect(0, 0, width, height);
+        
+        ctx.fillStyle = "red";
+        ctx.font = "bold 24px 'Rye', cursive";
+        ctx.textAlign = "center";
+        ctx.fillText(
+            boss.type === 'silbon' ? "¡EL SILBÓN SE ACERCA!" : "¡LA LLORONA LLORA!", 
+            width / 2, 
+            height / 2
+        );
+        return;
+    }
+
+    if (!boss.active) return;
+
+    const px = boss.x * TILE_SIZE;
+    const py = boss.y * TILE_SIZE;
+
+    if (boss.type === 'silbon') {
+        // El Silbon: Tall, skinny figure with a hat
+        const t = TILE_SIZE;
+        
+        // Body (Skinny and tall)
+        ctx.fillStyle = "rgba(20, 20, 20, 0.9)";
+        ctx.fillRect(px + t * 0.2, py - t * 4, t * 0.6, t * 5); // Torso and legs
+
+        // Arms (lanky, hanging down)
+        ctx.strokeStyle = "rgba(20, 20, 20, 0.9)";
+        ctx.lineWidth = t * 0.2;
+        ctx.beginPath();
+        ctx.moveTo(px + t * 0.5, py - t * 3); // shoulder
+        ctx.lineTo(px - t * 0.5, py - t * 1); // left arm
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(px + t * 0.5, py - t * 3); // shoulder
+        ctx.lineTo(px + t * 1.5, py - t * 1); // right arm holding sack
+        ctx.stroke();
+
+        // Sack of bones
+        ctx.fillStyle = "#5C4033"; // Dark brown
+        ctx.beginPath();
+        ctx.ellipse(px + t * 1.8, py, t * 0.8, t * 1.2, Math.PI / 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Sack tie
+        ctx.strokeStyle = "#3e2723";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px + t * 1.5, py - t * 1);
+        ctx.lineTo(px + t * 1.8, py - t * 0.8);
+        ctx.stroke();
+
+        // Hat (Sombrero Llanero)
+        ctx.fillStyle = "#1a1a1a";
+        // Brim
+        ctx.beginPath();
+        ctx.ellipse(px + t * 0.5, py - t * 4.2, t * 1.8, t * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Crown
+        ctx.beginPath();
+        ctx.ellipse(px + t * 0.5, py - t * 4.4, t * 0.8, t * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing red eyes (under the brim)
+        ctx.fillStyle = "#ff0000";
+        ctx.shadowColor = "#ff0000";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(px + t * 0.3, py - t * 3.8, 3, 0, Math.PI * 2);
+        ctx.arc(px + t * 0.7, py - t * 3.8, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0; // reset shadow
+    } else if (boss.type === 'llorona') {
+        // La Llorona: Creepy weeping woman in a tattered white dress
+        const t = TILE_SIZE;
+        const floatY = Math.sin(time / 150) * 8; // Floating up and down
+        const alpha = 0.6 + Math.sin(time / 200) * 0.2;
+
+        ctx.save();
+        ctx.translate(px, py + floatY);
+
+        // Ghostly Aura
+        ctx.shadowColor = "rgba(200, 220, 255, 0.8)";
+        ctx.shadowBlur = 20;
+
+        // Flowing, tattered white dress and veil
+        ctx.fillStyle = `rgba(220, 230, 240, ${alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(t * 0.5, -t * 3); // Top of head
+        ctx.quadraticCurveTo(t * 2, -t * 1, t * 1.5, t * 2); // Right side
+        // Tattered bottom edge
+        ctx.lineTo(t * 1.2, t * 1.5);
+        ctx.lineTo(t * 0.8, t * 2.2);
+        ctx.lineTo(t * 0.5, t * 1.6);
+        ctx.lineTo(t * 0.2, t * 2.2);
+        ctx.lineTo(-t * 0.2, t * 1.5);
+        ctx.lineTo(-t * 0.5, t * 2); // Left side
+        ctx.quadraticCurveTo(-t * 1, -t * 1, t * 0.5, -t * 3);
+        ctx.fill();
+
+        ctx.shadowBlur = 0; // Turn off glow for details
+
+        // Long, stringy black hair
+        ctx.fillStyle = `rgba(10, 10, 10, ${alpha + 0.2})`;
+        ctx.beginPath();
+        ctx.moveTo(t * 0.5, -t * 3);
+        ctx.quadraticCurveTo(t * 1.5, -t * 2.5, t * 1.2, 0); // Right hair
+        ctx.lineTo(t * 0.8, -t * 1.5); // Face cutout right
+        ctx.lineTo(t * 0.2, -t * 1.5); // Face cutout left
+        ctx.lineTo(-t * 0.2, 0); // Left hair
+        ctx.quadraticCurveTo(-t * 0.5, -t * 2.5, t * 0.5, -t * 3);
+        ctx.fill();
+
+        // Pale, sunken face
+        ctx.fillStyle = `rgba(200, 210, 220, ${alpha + 0.3})`;
+        ctx.beginPath();
+        ctx.ellipse(t * 0.5, -t * 2, t * 0.45, t * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Hollow, dark eyes
+        ctx.fillStyle = "#050505";
+        ctx.beginPath();
+        ctx.ellipse(t * 0.3, -t * 2.1, t * 0.15, t * 0.2, 0, 0, Math.PI * 2);
+        ctx.ellipse(t * 0.7, -t * 2.1, t * 0.15, t * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing white pupils (tiny)
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(t * 0.3, -t * 2.1, 1.5, 0, Math.PI * 2);
+        ctx.arc(t * 0.7, -t * 2.1, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Dark/Bloody tears streaming down
+        ctx.fillStyle = "rgba(50, 0, 0, 0.8)";
+        ctx.beginPath();
+        ctx.moveTo(t * 0.3, -t * 1.9);
+        ctx.lineTo(t * 0.25, -t * 1.2);
+        ctx.lineTo(t * 0.35, -t * 1.2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(t * 0.7, -t * 1.9);
+        ctx.lineTo(t * 0.65, -t * 1.2);
+        ctx.lineTo(t * 0.75, -t * 1.2);
+        ctx.fill();
+
+        // Creepy wailing mouth
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.ellipse(t * 0.5, -t * 1.6, t * 0.15, t * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
 };

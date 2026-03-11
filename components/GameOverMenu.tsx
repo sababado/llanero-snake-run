@@ -1,10 +1,11 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TRANSLATIONS } from '../constants';
 import { GameSettings, MultiplayerState } from '../types';
-import { Loader2, Settings, BarChart3, Repeat, Save, LogOut, RotateCcw } from 'lucide-react';
+import { Loader2, Settings, BarChart3, Repeat, Save, LogOut, RotateCcw, Lightbulb } from 'lucide-react';
 import { saveScoreToLeaderboard } from '../services/storageService';
+import { DID_YOU_KNOW_FACTS } from '../lore';
 
 interface GameOverMenuProps {
     winnerText: string;
@@ -43,6 +44,10 @@ const GameOverMenu: React.FC<GameOverMenuProps> = React.memo(({
     const t = TRANSLATIONS[settings.language];
     const [initials, setInitials] = useState("");
     const [scoreSaved, setScoreSaved] = useState(false);
+
+    const randomFact = useMemo(() => {
+        return DID_YOU_KNOW_FACTS[Math.floor(Math.random() * DID_YOU_KNOW_FACTS.length)];
+    }, []);
 
     const handleSaveScore = () => {
         if (!initials) return;
@@ -129,6 +134,16 @@ const GameOverMenu: React.FC<GameOverMenuProps> = React.memo(({
             {/* Action Buttons */}
             <div className="flex flex-col gap-3 mt-6 w-full max-w-md justify-center items-center">
                 
+                <div className="bg-[#5D4037] border-2 border-[#8d6e63] p-3 rounded-lg w-full mb-2 shadow-inner">
+                    <div className="flex items-center gap-2 text-[#f1c40f] mb-1">
+                        <Lightbulb size={16} />
+                        <span className="font-bold text-sm">¿Sabías Que...?</span>
+                    </div>
+                    <p className="text-[#f4ecd8] text-sm italic leading-tight">
+                        {randomFact}
+                    </p>
+                </div>
+
                 {isMpActive ? (
                     <>
                         {isHost ? (

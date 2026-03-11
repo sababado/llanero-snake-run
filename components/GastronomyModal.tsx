@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { X, Loader2, Utensils } from 'lucide-react';
-import { generateFoodFact } from '../services/ai/narrator';
+import { X, Utensils } from 'lucide-react';
+import { FOOD_FACTS } from '../lore';
 
 interface GastronomyModalProps {
     items: string[];
@@ -11,15 +11,11 @@ interface GastronomyModalProps {
 const GastronomyModal: React.FC<GastronomyModalProps> = React.memo(({ items, onClose }) => {
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [fact, setFact] = useState<string>("");
-    const [isLoading, setIsLoading] = useState(false);
 
-    const handleItemClick = async (item: string) => {
+    const handleItemClick = (item: string) => {
         setSelectedItem(item);
-        setFact("");
-        setIsLoading(true);
-        const generatedFact = await generateFoodFact(item);
+        const generatedFact = FOOD_FACTS[item] || `${item} es un plato típico delicioso del Llano.`;
         setFact(generatedFact);
-        setIsLoading(false);
     };
 
     // Filter unique items
@@ -61,16 +57,9 @@ const GastronomyModal: React.FC<GastronomyModalProps> = React.memo(({ items, onC
 
                         {selectedItem && (
                             <div className="bg-white border-2 border-orange-300 p-4 rounded-lg shadow-inner min-h-[80px] flex items-center justify-center">
-                                {isLoading ? (
-                                    <div className="flex gap-2 text-orange-500 items-center">
-                                        <Loader2 className="animate-spin" size={20}/> 
-                                        <span className="text-xs font-bold">Preguntándole a la abuela...</span>
-                                    </div>
-                                ) : (
-                                    <p className="text-orange-900 text-center font-serif leading-tight">
-                                        "{fact}"
-                                    </p>
-                                )}
+                                <p className="text-orange-900 text-center font-serif leading-tight">
+                                    "{fact}"
+                                </p>
                             </div>
                         )}
                     </div>

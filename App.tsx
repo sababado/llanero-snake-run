@@ -16,6 +16,7 @@ import StatsModal from './components/StatsModal';
 import SettingsModal from './components/SettingsModal';
 import GastronomyModal from './components/GastronomyModal';
 import MultiplayerLobby from './components/MultiplayerLobby';
+import BestiaryModal from './components/BestiaryModal';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<GameSettings>(INITIAL_SETTINGS);
@@ -26,6 +27,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showGastronomy, setShowGastronomy] = useState(false);
+  const [showBestiary, setShowBestiary] = useState(false);
   
   // Game State (UI specific)
   const [scores, setScores] = useState({ p1: 0, p2: 0 });
@@ -243,9 +245,11 @@ const App: React.FC = () => {
   const handleShowStats = useCallback((show: boolean) => setShowStats(show), []);
   const handleShowSettings = useCallback((show: boolean) => setShowSettings(show), []);
   const handleShowGastronomy = useCallback((show: boolean) => setShowGastronomy(show), []);
+  const handleShowBestiary = useCallback((show: boolean) => setShowBestiary(show), []);
   const handleCloseStats = useCallback(() => setShowStats(false), []);
   const handleCloseSettings = useCallback(() => setShowSettings(false), []);
   const handleCloseGastronomy = useCallback(() => setShowGastronomy(false), []);
+  const handleCloseBestiary = useCallback(() => setShowBestiary(false), []);
 
   return (
     <div className={`min-h-screen font-roboto flex flex-col items-center justify-start pt-4 sm:justify-center sm:pt-0 p-2 sm:p-4 overflow-hidden transition-colors duration-500 ${settings.retroMode ? 'bg-[#333] font-mono' : 'bg-[#2c3e50] text-white'}`}>
@@ -337,6 +341,7 @@ const App: React.FC = () => {
                         updateSetting={updateSetting}
                         setShowStats={handleShowStats}
                         setShowSettings={handleShowSettings}
+                        setShowBestiary={handleShowBestiary}
                         isGeneratingAssets={isGeneratingAssets}
                     />
                 )}
@@ -363,6 +368,7 @@ const App: React.FC = () => {
         {showStats && <StatsModal stats={stats} onClose={handleCloseStats} />}
         {showSettings && <SettingsModal settings={settings} updateSetting={updateSetting} onClose={handleCloseSettings} />}
         {showGastronomy && <GastronomyModal items={sessionItems} onClose={handleCloseGastronomy} />}
+        {showBestiary && <BestiaryModal totalChiguiros={stats.totalChiguiros} onClose={handleCloseBestiary} />}
 
       </div>
     </div>

@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { GameStats } from '../types';
-import { X, Trophy } from 'lucide-react';
+import { X, Trophy, Star } from 'lucide-react';
+import { getLlaneroTitle } from '../lore';
 
 interface StatsModalProps {
     stats: GameStats;
@@ -9,6 +10,8 @@ interface StatsModalProps {
 }
 
 const StatsModal: React.FC<StatsModalProps> = React.memo(({ stats, onClose }) => {
+    const title = getLlaneroTitle(stats.totalScore);
+
     return (
         <div className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-[#5D4037] p-6 rounded-lg border-4 border-[#8d6e63] w-full max-w-sm relative shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -19,9 +22,16 @@ const StatsModal: React.FC<StatsModalProps> = React.memo(({ stats, onClose }) =>
                     <X size={24} />
                 </button>
                 
-                <h2 className="font-rye text-[#f1c40f] text-2xl mb-4 text-center border-b-2 border-[#8d6e63] pb-2">
+                <h2 className="font-rye text-[#f1c40f] text-2xl mb-2 text-center">
                     Estadísticas del Hato
                 </h2>
+                
+                <div className="bg-[#8b5a2b] border-2 border-[#d2b48c] rounded p-3 mb-4 text-center">
+                    <div className="text-[#f4ecd8] text-xs uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                        <Star size={12} /> Rango Llanero <Star size={12} />
+                    </div>
+                    <div className="font-rye text-xl text-[#f1c40f]">{title}</div>
+                </div>
 
                 <div className="space-y-4 font-mono text-lg mb-6">
                     <div className="flex justify-between items-center bg-black/20 p-2 rounded">

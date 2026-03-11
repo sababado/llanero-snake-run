@@ -42,5 +42,6 @@ export const INITIAL_SETTINGS: any = {
     musicStyle: 'joropo',
     narratorAudioEnabled: true,
     narratorTextEnabled: false,
-    retroMode: false
+    retroMode: false,
+    mythicalBossesEnabled: true
 };

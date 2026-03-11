@@ -63,8 +63,15 @@ const updateWeather = (state: GameState) => {
     else if (totalScore < DAY_NIGHT_THRESHOLD_2) state.weather = 'sunset';
     else state.weather = 'night';
 
+    // Seasons (Verano -> Invierno)
+    if (totalScore >= 15) { // Lowered threshold for testing/visibility
+        state.season = 'invierno';
+    } else {
+        state.season = 'verano';
+    }
+
     // Random Rain (Invierno Mode)
-    if (state.weather !== 'night') { 
+    if (state.weather !== 'night' && state.season === 'invierno') { 
         if (state.rainIntensity === 0 && Math.random() < RAIN_START_CHANCE) {
             state.rainIntensity = 0.1; 
         } else if (state.rainIntensity > 0) {
@@ -76,6 +83,12 @@ const updateWeather = (state: GameState) => {
         }
     } else {
         state.rainIntensity = 0;
+    }
+
+    // Llorona forces night and heavy rain
+    if (state.boss.active && state.boss.type === 'llorona') {
+        state.weather = 'night';
+        state.rainIntensity = 1;
     }
 };
 

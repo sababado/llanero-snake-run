@@ -58,6 +58,20 @@ export interface BolaDeFuego {
   moveTimer: number;
 }
 
+export type BossType = 'silbon' | 'llorona' | 'none';
+
+export interface MythicalBoss {
+  active: boolean;
+  type: BossType;
+  x: number;
+  y: number;
+  timer: number;
+  warningTimer: number;
+  dx: number;
+  dy: number;
+  moveTimer: number;
+}
+
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type Language = 'es' | 'en';
 export type MusicStyle = 'joropo' | 'country' | 'mix' | 'retro';
@@ -75,6 +89,7 @@ export interface GameSettings {
   narratorAudioEnabled: boolean;
   narratorTextEnabled: boolean;
   retroMode: boolean; // Nokia style
+  mythicalBossesEnabled: boolean;
 }
 
 export interface GameState {
@@ -86,6 +101,7 @@ export interface GameState {
   cafe: Item; // New Item: Cafe (Tinto)
   bomb: Item;
   bola: BolaDeFuego;
+  boss: MythicalBoss;
   clouds: Cloud[];
   particles: Particle[];
   gameMode: 1 | 2;
@@ -97,6 +113,7 @@ export interface GameState {
   lastMilestone: number;
   sessionEatenItems: string[]; // Track items for Gastronomy Gallery
   weather: WeatherState;
+  season: 'verano' | 'invierno';
   rainIntensity: number; // 0 to 1
   gridSize: { width: number; height: number }; // Dynamic Grid Size
 }
@@ -155,7 +172,9 @@ export interface UpdatePacket {
   cafe: Item;
   bomb: Item;
   bola: BolaDeFuego;
+  boss: MythicalBoss;
   weather: WeatherState;
+  season: 'verano' | 'invierno';
   rainIntensity: number;
   winnerMsg: string;
   isRunning: boolean;
