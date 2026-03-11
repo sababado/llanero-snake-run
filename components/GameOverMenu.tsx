@@ -24,7 +24,7 @@ interface GameOverMenuProps {
     onRematch?: () => void;
 }
 
-const GameOverMenu: React.FC<GameOverMenuProps> = ({
+const GameOverMenu: React.FC<GameOverMenuProps> = React.memo(({
     winnerText,
     narratorMessage,
     isLoadingCommentary,
@@ -196,6 +196,6 @@ const GameOverMenu: React.FC<GameOverMenuProps> = ({
 
         </div>
     );
-};
+});
 
 export default GameOverMenu;

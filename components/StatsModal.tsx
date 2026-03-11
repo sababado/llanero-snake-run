@@ -8,7 +8,7 @@ interface StatsModalProps {
     onClose: () => void;
 }
 
-const StatsModal: React.FC<StatsModalProps> = ({ stats, onClose }) => {
+const StatsModal: React.FC<StatsModalProps> = React.memo(({ stats, onClose }) => {
     return (
         <div className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-[#5D4037] p-6 rounded-lg border-4 border-[#8d6e63] w-full max-w-sm relative shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -73,6 +73,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ stats, onClose }) => {
             </div>
         </div>
     );
-};
+});
 
 export default StatsModal;

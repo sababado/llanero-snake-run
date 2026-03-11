@@ -1,9 +1,14 @@
 
 import { Snake, GameState, GameEvent } from '../../types';
 import { GAME_BALANCE } from '../balance';
-import { spawnParticles, respawnFood } from '../logic'; // We will refactor logic to export these or move them later
 import { NarrationPayload } from '../../types';
 import { MAX_IMMUNITY } from '../../constants';
+
+// Helper for lenient hitboxes on positive items (allows adjacent pickup)
+// Creates a 3x3 effective capture zone around the item
+const isProximityHit = (head: {x: number, y: number}, item: {x: number, y: number}) => {
+    return Math.abs(head.x - item.x) <= 1 && Math.abs(head.y - item.y) <= 1;
+};
 
 export const moveSnake = (snake: Snake, state: GameState, tilesX: number, tilesY: number, events: GameEvent[], respawnCallback: (s: GameState, x: number, y: number) => void) => {
     if (snake.dead) return;
@@ -38,8 +43,8 @@ const handleInteraction = (
 ) => {
     const { SCORING, PARTICLES } = GAME_BALANCE;
 
-    // Chigüiro (Food)
-    if (head.x === state.chiguiro.x && head.y === state.chiguiro.y) {
+    // Chigüiro (Food) - PROXIMITY CHECK (Lenient)
+    if (isProximityHit(head, state.chiguiro)) {
         snake.score += SCORING.FOOD;
         state.chiguirosEaten += 1;
         
@@ -50,12 +55,8 @@ const handleInteraction = (
         events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
         events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
         
-        // We need to import spawnParticles or pass it in. For now, we assume logic exports it, 
-        // but circular dependency is risky. Ideally, spawnParticles moves to a utils file.
-        // For this step, we will emit an event or assume global util availability.
-        // To keep it clean, we will implement particle pushing directly here or move spawnParticles to a shared util.
-        // Let's implement a lightweight particle pusher here to break dependency.
-        pushParticles(state, head.x, head.y, PARTICLES.FOOD_COLOR, PARTICLES.FOOD_COUNT);
+        // Spawn particles at item location, not head, for better visual feedback on proximity hits
+        pushParticles(state, state.chiguiro.x, state.chiguiro.y, PARTICLES.FOOD_COLOR, PARTICLES.FOOD_COUNT);
 
         if (snake.score > state.lastMilestone && snake.score % SCORING.MILESTONE_INTERVAL === 0) {
             state.lastMilestone = snake.score;
@@ -67,36 +68,36 @@ const handleInteraction = (
 
         respawnCallback(state, tilesX, tilesY);
     }
-    // Aguacate (Bonus)
-    else if (state.aguacate.active && head.x === state.aguacate.x && head.y === state.aguacate.y) {
+    // Aguacate (Bonus) - PROXIMITY CHECK (Lenient)
+    else if (state.aguacate.active && isProximityHit(head, state.aguacate)) {
         snake.score += SCORING.AGUACATE;
         state.aguacate.active = false;
-        pushParticles(state, head.x, head.y, PARTICLES.BONUS_COLOR, PARTICLES.BONUS_COUNT);
+        pushParticles(state, state.aguacate.x, state.aguacate.y, PARTICLES.BONUS_COLOR, PARTICLES.BONUS_COUNT);
         events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
         events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
         snake.body.pop();
     }
-    // Virgen (Relic)
-    else if (state.virgen.active && head.x === state.virgen.x && head.y === state.virgen.y) {
+    // Virgen (Relic) - PROXIMITY CHECK (Lenient)
+    else if (state.virgen.active && isProximityHit(head, state.virgen)) {
         snake.score += SCORING.VIRGEN;
         state.virgen.active = false;
-        pushParticles(state, head.x, head.y, PARTICLES.RELIC_COLOR, PARTICLES.RELIC_COUNT);
+        pushParticles(state, state.virgen.x, state.virgen.y, PARTICLES.RELIC_COLOR, PARTICLES.RELIC_COUNT);
         events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
         events.push({ type: 'MUSIC_INTENSITY', payload: state.snake1.score + state.snake2.score });
         events.push({ type: 'NARRATION', payload: { type: 'relic' } as NarrationPayload });
         snake.body.pop();
     }
-    // Cafe (Powerup)
-    else if (state.cafe.active && head.x === state.cafe.x && head.y === state.cafe.y) {
+    // Cafe (Powerup) - PROXIMITY CHECK (Lenient)
+    else if (state.cafe.active && isProximityHit(head, state.cafe)) {
         snake.score += SCORING.CAFE;
         state.cafe.active = false;
         snake.immunityTimer = MAX_IMMUNITY; 
-        pushParticles(state, head.x, head.y, PARTICLES.POWERUP_COLOR, PARTICLES.POWERUP_COUNT); 
+        pushParticles(state, state.cafe.x, state.cafe.y, PARTICLES.POWERUP_COLOR, PARTICLES.POWERUP_COUNT); 
         events.push({ type: 'SCORE_UPDATE', payload: { s1: state.snake1.score, s2: state.snake2.score } });
         events.push({ type: 'NARRATION', payload: { type: 'powerup', text: "¡Un tintico pa'l alma!" } as NarrationPayload });
         snake.body.pop();
     }
-    // Bomb (Trap)
+    // Bomb (Trap) - STRICT 1x1 CHECK (Must hit directly)
     else if (state.bomb.active && head.x === state.bomb.x && head.y === state.bomb.y) {
         if (snake.immunityTimer > 0) {
             state.bomb.active = false;
@@ -107,7 +108,7 @@ const handleInteraction = (
         }
         snake.body.pop();
     }
-    // Bola de Fuego (Trap)
+    // Bola de Fuego (Trap) - STRICT 1x1 CHECK (Must hit directly)
     else if (state.bola.active && head.x === state.bola.x && head.y === state.bola.y) {
         if (snake.immunityTimer === 0) {
             snake.dead = true;
@@ -116,15 +117,13 @@ const handleInteraction = (
         snake.body.pop();
     }
     else {
+        // Normal move
         snake.body.pop();
     }
 };
 
 const pushParticles = (state: GameState, x: number, y: number, color: string, count: number) => {
-    // We duplicate the particle logic here or import from a utils file. 
-    // Ideally, logic.ts exports this, but let's copy to decouple for now.
-    // In a full refactor, this goes to game/utils.ts
-    const TILE_SIZE = 18; // We could import this but let's keep system mostly pure
+    const TILE_SIZE = 18; 
     const px = x * TILE_SIZE + TILE_SIZE / 2;
     const py = y * TILE_SIZE + TILE_SIZE / 2;
     

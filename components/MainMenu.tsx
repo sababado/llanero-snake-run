@@ -14,7 +14,7 @@ interface MainMenuProps {
     isGeneratingAssets: boolean;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ 
+const MainMenu: React.FC<MainMenuProps> = React.memo(({ 
     startGame,
     startMultiplayerSetup,
     settings, 
@@ -122,6 +122,6 @@ const MainMenu: React.FC<MainMenuProps> = ({
             </div>
         </>
     );
-};
+});
 
 export default MainMenu;

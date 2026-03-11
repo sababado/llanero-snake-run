@@ -226,7 +226,7 @@ const App: React.FC = () => {
       if (settings.narratorAudioEnabled) speakLlaneroText(text, settings.language);
   }, [settings.narratorAudioEnabled, settings.narratorTextEnabled, settings.language]);
 
-  const updateSetting = (key: keyof GameSettings, value: any) => {
+  const updateSetting = useCallback((key: keyof GameSettings, value: any) => {
       setSettings(prev => {
           const updated = { ...prev, [key]: value };
           if (mpState.active && mpState.role === 'host' && view === 'LOBBY') {
@@ -234,7 +234,18 @@ const App: React.FC = () => {
           }
           return updated;
       });
-  };
+  }, [mpState.active, mpState.role, view, broadcastSettings]);
+
+  const handleSessionItemsUpdate = useCallback((items: string[]) => {
+      setSessionItems(items);
+  }, []);
+
+  const handleShowStats = useCallback((show: boolean) => setShowStats(show), []);
+  const handleShowSettings = useCallback((show: boolean) => setShowSettings(show), []);
+  const handleShowGastronomy = useCallback((show: boolean) => setShowGastronomy(show), []);
+  const handleCloseStats = useCallback(() => setShowStats(false), []);
+  const handleCloseSettings = useCallback(() => setShowSettings(false), []);
+  const handleCloseGastronomy = useCallback(() => setShowGastronomy(false), []);
 
   return (
     <div className={`min-h-screen font-roboto flex flex-col items-center justify-start pt-4 sm:justify-center sm:pt-0 p-2 sm:p-4 overflow-hidden transition-colors duration-500 ${settings.retroMode ? 'bg-[#333] font-mono' : 'bg-[#2c3e50] text-white'}`}>
@@ -276,7 +287,7 @@ const App: React.FC = () => {
             onGameOver={handleGameOver}
             onScoreUpdate={handleScoreUpdate}
             onShowCommentary={handleShowCommentary}
-            onSessionItemsUpdate={setSessionItems}
+            onSessionItemsUpdate={handleSessionItemsUpdate}
             mpState={mpState}
             onMpInitData={handleMpInitData}
             onAssetsLoaded={signalReady}
@@ -306,13 +317,13 @@ const App: React.FC = () => {
                         isLoadingCommentary={isLoadingCommentary}
                         duelStats={duelStats}
                         settings={settings}
-                        startGame={(mode) => startGame(mode)}
+                        startGame={startGame}
                         updateSetting={updateSetting}
-                        setShowStats={setShowStats}
-                        setShowSettings={setShowSettings}
+                        setShowStats={handleShowStats}
+                        setShowSettings={handleShowSettings}
                         isGeneratingAssets={isGeneratingAssets}
                         finalScore={scores.p1}
-                        onOpenGastronomy={() => setShowGastronomy(true)}
+                        onOpenGastronomy={handleShowGastronomy}
                         mpState={mpState}
                         onCancelMultiplayer={cancelMultiplayer}
                         onRematch={handleRematchAction}
@@ -320,12 +331,12 @@ const App: React.FC = () => {
                 )}
                 {view === 'MENU' && (
                     <MainMenu 
-                        startGame={(mode) => startGame(mode)}
+                        startGame={startGame}
                         startMultiplayerSetup={() => setView('LOBBY')}
                         settings={settings}
                         updateSetting={updateSetting}
-                        setShowStats={setShowStats}
-                        setShowSettings={setShowSettings}
+                        setShowStats={handleShowStats}
+                        setShowSettings={handleShowSettings}
                         isGeneratingAssets={isGeneratingAssets}
                     />
                 )}
@@ -349,9 +360,9 @@ const App: React.FC = () => {
         )}
 
         {/* Modals */}
-        {showStats && <StatsModal stats={stats} onClose={() => setShowStats(false)} />}
-        {showSettings && <SettingsModal settings={settings} updateSetting={updateSetting} onClose={() => setShowSettings(false)} />}
-        {showGastronomy && <GastronomyModal items={sessionItems} onClose={() => setShowGastronomy(false)} />}
+        {showStats && <StatsModal stats={stats} onClose={handleCloseStats} />}
+        {showSettings && <SettingsModal settings={settings} updateSetting={updateSetting} onClose={handleCloseSettings} />}
+        {showGastronomy && <GastronomyModal items={sessionItems} onClose={handleCloseGastronomy} />}
 
       </div>
     </div>

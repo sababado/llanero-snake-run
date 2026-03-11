@@ -7,7 +7,7 @@ import { drawSnake, drawHUD } from './renderUtils';
 export const drawGame = (
     ctx: CanvasRenderingContext2D,
     state: GameState,
-    assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null },
+    assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null, offscreenBg?: HTMLCanvasElement | null },
     time: number,
     isRetroMode: boolean
 ) => {
@@ -25,13 +25,17 @@ export const drawGame = (
 const drawModernGame = (
     ctx: CanvasRenderingContext2D,
     state: GameState,
-    assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null },
+    assets: { bgImage: HTMLImageElement | null, virgenImage: HTMLImageElement | null, offscreenBg?: HTMLCanvasElement | null },
     width: number,
     height: number,
     time: number
 ) => {
     // Background & Weather
-    drawBackground(ctx, state, assets.bgImage, width, height);
+    if (assets.offscreenBg) {
+        ctx.drawImage(assets.offscreenBg, 0, 0);
+    } else {
+        drawBackground(ctx, state, assets.bgImage, width, height);
+    }
 
     // Clouds
     ctx.fillStyle = "rgba(255,255,255,0.6)";

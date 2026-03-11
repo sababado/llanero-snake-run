@@ -7,7 +7,7 @@ interface VirtualJoystickProps {
   enabled: boolean;
 }
 
-const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, enabled }) => {
+const VirtualJoystick: React.FC<VirtualJoystickProps> = React.memo(({ onDirectionChange, enabled }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastDirRef = useRef<Direction | null>(null);
   const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
@@ -129,6 +129,6 @@ const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ onDirectionChange, en
       </div>
     </div>
   );
-};
+});
 
 export default VirtualJoystick;

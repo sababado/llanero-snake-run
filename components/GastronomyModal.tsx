@@ -8,7 +8,7 @@ interface GastronomyModalProps {
     onClose: () => void;
 }
 
-const GastronomyModal: React.FC<GastronomyModalProps> = ({ items, onClose }) => {
+const GastronomyModal: React.FC<GastronomyModalProps> = React.memo(({ items, onClose }) => {
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [fact, setFact] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
@@ -78,6 +78,6 @@ const GastronomyModal: React.FC<GastronomyModalProps> = ({ items, onClose }) => 
              </div>
         </div>
     );
-}
+});
 
 export default GastronomyModal;

@@ -12,7 +12,7 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ settings, updateSetting, onClose }) => {
+const SettingsModal: React.FC<SettingsModalProps> = React.memo(({ settings, updateSetting, onClose }) => {
     const t = TRANSLATIONS[settings.language];
 
     return (
@@ -146,6 +146,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, updateSetting, 
             </div>
         </div>
     );
-};
+});
 
 export default SettingsModal;

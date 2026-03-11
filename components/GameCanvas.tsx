@@ -29,7 +29,7 @@ interface GameCanvasProps {
   initialGridSize: { width: number; height: number } | null;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({
+const GameCanvas: React.FC<GameCanvasProps> = React.memo(({
   settings,
   gameMode,
   isPlaying,
@@ -44,6 +44,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   initialGridSize
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasStyle, setCanvasStyle] = useState<React.CSSProperties>({ width: '100%', height: 'auto' });
   
   // Timers
@@ -61,6 +62,50 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Game State Ref (Initialized via Factory)
   const stateRef = useRef<GameState>(createInitialState(1, null, false, 800, 800));
+
+  // --- Background Pre-rendering ---
+  const updateOffscreenBackground = useCallback(() => {
+      const state = stateRef.current;
+      if (!state.gridSize) return;
+      
+      if (!offscreenCanvasRef.current) {
+          offscreenCanvasRef.current = document.createElement('canvas');
+      }
+      
+      const offCanvas = offscreenCanvasRef.current;
+      offCanvas.width = state.gridSize.width;
+      offCanvas.height = state.gridSize.height;
+      
+      const offCtx = offCanvas.getContext('2d');
+      if (!offCtx) return;
+
+      const w = offCanvas.width;
+      const h = offCanvas.height;
+
+      // Base Background
+      if (bgImageRef.current) {
+          offCtx.drawImage(bgImageRef.current, 0, 0, w, h);
+          offCtx.fillStyle = "rgba(0, 0, 0, 0.05)"; 
+          offCtx.fillRect(0, 0, w, h);
+      } else {
+          const grad = offCtx.createLinearGradient(0, 0, 0, h);
+          grad.addColorStop(0, "#4CA1AF");
+          grad.addColorStop(1, "#C4E0E5");
+          offCtx.fillStyle = grad;
+          offCtx.fillRect(0, 0, w, h);
+      }
+
+      // Weather Overlays (Static part)
+      if (state.weather === 'sunset') {
+          offCtx.fillStyle = "rgba(255, 87, 34, 0.3)";
+          offCtx.globalCompositeOperation = 'overlay';
+          offCtx.fillRect(0, 0, w, h);
+          offCtx.globalCompositeOperation = 'source-over';
+      } else if (state.weather === 'night') {
+          offCtx.fillStyle = "rgba(10, 10, 50, 0.6)";
+          offCtx.fillRect(0, 0, w, h);
+      }
+  }, []);
 
   const setDirection = useCallback((snake: Snake, dir: Direction) => {
       if (snake.dead) return;
@@ -200,11 +245,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
           setBgLoaded(false);
           const img = new Image();
           img.src = backgroundUrl;
-          img.onload = () => { bgImageRef.current = img; setBgLoaded(true); };
+          img.onload = () => { 
+              bgImageRef.current = img; 
+              setBgLoaded(true); 
+              updateOffscreenBackground();
+          };
       } else {
-          setBgLoaded(true); bgImageRef.current = null;
+          setBgLoaded(true); 
+          bgImageRef.current = null;
+          updateOffscreenBackground();
       }
-  }, [backgroundUrl]);
+  }, [backgroundUrl, updateOffscreenBackground]);
 
   useEffect(() => {
       if (virgenUrl) {
@@ -238,6 +289,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         height
     );
     
+    updateOffscreenBackground();
+    
     // Reset side effects
     onScoreUpdate(0, 0);
     setMusicIntensity(0); 
@@ -259,7 +312,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         const canvas = canvasRef.current;
         if (canvas) {
              const ctx = canvas.getContext('2d');
-             if (ctx) drawGame(ctx, stateRef.current, { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current }, time, settings.retroMode);
+             if (ctx) drawGame(ctx, stateRef.current, { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current, offscreenBg: offscreenCanvasRef.current }, time, settings.retroMode);
         }
         updateVisuals(time); 
         return;
@@ -325,7 +378,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     if (canvas) {
         const ctx = canvas.getContext('2d');
-        if (ctx) drawGame(ctx, stateRef.current, { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current }, time, settings.retroMode);
+        if (ctx) drawGame(ctx, stateRef.current, { bgImage: bgImageRef.current, virgenImage: virgenImageRef.current, offscreenBg: offscreenCanvasRef.current }, time, settings.retroMode);
     }
   }, [settings, gameMode, mpState, setDirection, handleGameEvents]); 
 
@@ -397,6 +450,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         <VirtualJoystick enabled={settings.useJoystick} onDirectionChange={handleInput} />
     </>
   );
-};
+});
 
 export default GameCanvas;

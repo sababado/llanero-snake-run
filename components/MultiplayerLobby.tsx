@@ -16,7 +16,7 @@ interface MultiplayerLobbyProps {
     waitingForAck?: boolean;
 }
 
-const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ 
+const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = React.memo(({ 
     settings, 
     updateSetting,
     onConnected, 
@@ -373,6 +373,6 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             )}
         </div>
     );
-};
+});
 
 export default MultiplayerLobby;

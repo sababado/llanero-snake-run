@@ -128,15 +128,22 @@ const getFallback = (type: CommentaryContext, lang: Language): string => {
     return list[Math.floor(Math.random() * list.length)];
 };
 
+let lastCommentaryTime = 0;
+const COMMENTARY_THROTTLE = 5000; // 5 seconds
+
 export const generateNarratorCommentary = async (
   type: CommentaryContext, 
   lang: Language,
   context?: { score?: number, cause?: string }
 ): Promise<string> => {
-  // Use local cache 80% of the time to save API calls
-  if (Math.random() < 0.8 || isRateLimited()) {
+  const now = Date.now();
+  
+  // Use local cache 80% of the time OR if throttled OR if rate limited
+  if (Math.random() < 0.8 || (now - lastCommentaryTime < COMMENTARY_THROTTLE) || isRateLimited()) {
       return getFallback(type, lang);
   }
+
+  lastCommentaryTime = now;
 
   try {
     let prompt = "";
